@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Medical imaging data is never committed: download it from the official source
+data/
+*.mhd
+*.raw
+*.dcm
+*.nii
+*.nii.gz
+
+# Training outputs
+runs/
+*.pt
+*.onnx
