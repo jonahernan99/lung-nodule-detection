@@ -46,6 +46,11 @@ reported side by side with their evaluation protocols.
   files.
 - **`lungnodule.geometry`**: conversion between world coordinates (mm) and
   voxel indices, including scans with flipped axes.
+- **`lungnodule.preprocess`**: reads `.mhd` scans, applies a lung window and
+  exports 2D slices with YOLO labels. Each box is sized to the nodule's
+  cross-section on that slice. Background slices are sampled only from slices
+  that do not touch any nodule, so a barely visible nodule is never taught as
+  background.
 
 ```python
 from lungnodule.annotations import load_annotations, load_candidates
@@ -59,16 +64,26 @@ result = compute_froc(
 print(f"CPM: {result.cpm:.3f}", dict(zip(result.fp_rates, result.sensitivities)))
 ```
 
+```python
+from lungnodule.annotations import load_annotations
+from lungnodule.preprocess import export_slices, load_scan
+
+nodules = load_annotations("annotations.csv")
+scan = load_scan("subset0/<series_uid>.mhd")
+export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/train")
+```
+
 ## Roadmap
 
 - [x] Scan-level FROC/CPM evaluation
 - [x] LUNA16 annotation readers and coordinate conversion
-- [ ] Preprocessing: read `.mhd` scans, apply a lung window and export slices with YOLO labels
+- [x] Preprocessing: read `.mhd` scans, apply a lung window and export slices with YOLO labels
 - [ ] Fold assignment from LUNA16 subsets, checking that no patient appears in two folds
 - [ ] Training notebook for a free cloud GPU (Kaggle / Colab)
 - [ ] Merge 2D slice detections into 3D candidates per scan
 - [ ] Results: FROC curve and CPM, compared with the thesis
 - [ ] Eigen-CAM explainability maps
+- [ ] Experiment: stack neighbouring slices as color channels (2.5D input)
 
 ## Data
 
@@ -81,7 +96,7 @@ use.
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # includes SimpleITK and Pillow for the data tools
 ruff check . && ruff format --check .
 pytest --cov=lungnodule
 ```
