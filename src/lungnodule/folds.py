@@ -9,12 +9,18 @@ test data.
 
 from __future__ import annotations
 
+import csv
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 SPLITS = ("train", "val", "test")
 _SUBSET_RE = re.compile(r"^subset(\d+)$")
+
+#: Column names commonly used for series and patient IDs in LIDC-IDRI metadata.
+SERIES_COLUMNS = ("Series UID", "SeriesInstanceUID", "seriesuid", "series_uid")
+PATIENT_COLUMNS = ("Subject ID", "PatientID", "patient_id")
 
 
 def _subset_of(path: Path) -> int | None:
@@ -63,3 +69,65 @@ def split_by_subset(
         uid: "test" if subset == test_subset else "val" if subset == val_subset else "train"
         for uid, subset in subset_of.items()
     }
+
+
+@dataclass(frozen=True)
+class LeakReport:
+    """Patients whose scans fall in more than one split."""
+
+    leaks: dict[str, tuple[str, ...]]
+    """Patient ID -> the splits their scans appear in."""
+    unmatched_scans: tuple[str, ...]
+    """Scans with no patient ID in the metadata, which could not be checked."""
+
+    @property
+    def ok(self) -> bool:
+        return not self.leaks
+
+
+def _pick_column(available: Sequence[str], choices: Sequence[str], path: Path) -> str:
+    for column in choices:
+        if column in available:
+            return column
+    raise ValueError(f"{path} has none of the columns: {', '.join(choices)}")
+
+
+def load_patient_ids(
+    path: str | Path,
+    *,
+    series_column: str | None = None,
+    patient_column: str | None = None,
+) -> dict[str, str]:
+    """Read a series UID -> patient ID mapping from a metadata CSV.
+
+    LUNA16 files carry no patient ID, so this comes from LIDC-IDRI metadata.
+    Common column names are detected; pass them explicitly for other files.
+    """
+    path = Path(path)
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        fields = reader.fieldnames or []
+        series = series_column or _pick_column(fields, SERIES_COLUMNS, path)
+        patient = patient_column or _pick_column(fields, PATIENT_COLUMNS, path)
+        for column in (series, patient):
+            if column not in fields:
+                raise ValueError(f"{path} has no column {column!r}")
+        return {row[series]: row[patient] for row in reader if row[series] and row[patient]}
+
+
+def check_patient_leaks(split_of: Mapping[str, str], patient_of: Mapping[str, str]) -> LeakReport:
+    """Find patients with scans in more than one split."""
+    splits_by_patient: dict[str, set[str]] = {}
+    unmatched = []
+    for uid, split in split_of.items():
+        patient = patient_of.get(uid)
+        if patient is None:
+            unmatched.append(uid)
+        else:
+            splits_by_patient.setdefault(patient, set()).add(split)
+    leaks = {
+        patient: tuple(sorted(splits))
+        for patient, splits in sorted(splits_by_patient.items())
+        if len(splits) > 1
+    }
+    return LeakReport(leaks=leaks, unmatched_scans=tuple(sorted(unmatched)))
