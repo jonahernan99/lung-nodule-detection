@@ -51,6 +51,26 @@ reported side by side with their evaluation protocols.
   cross-section on that slice. Background slices are sampled only from slices
   that do not touch any nodule, so a barely visible nodule is never taught as
   background.
+- **`lungnodule.folds`**: splits scans by LUNA16 subset and checks, using
+  LIDC-IDRI metadata, that no patient has scans in more than one split.
+- **`lungnodule.dataset`** and the **`lungnodule build-dataset`** command:
+  export a ready-to-train YOLO dataset with an Ultralytics `data.yaml`. Test
+  scans are only listed in `splits.csv`, because scan-level evaluation runs
+  the detector on every slice of each test scan.
+
+### Build the training data
+
+```bash
+pip install -e ".[data]"
+lungnodule build-dataset \
+  --luna-root path/to/luna16 \          # folder containing subset0 ... subset9
+  --annotations path/to/annotations.csv \
+  --out dataset \
+  --test-subset 9 --val-subset 8 \
+  --patients path/to/lidc_metadata.csv  # optional: stop if a patient leaks
+```
+
+Add `--max-scans 20` for a quick first run on a free GPU.
 
 ```python
 from lungnodule.annotations import load_annotations, load_candidates
@@ -78,7 +98,8 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Scan-level FROC/CPM evaluation
 - [x] LUNA16 annotation readers and coordinate conversion
 - [x] Preprocessing: read `.mhd` scans, apply a lung window and export slices with YOLO labels
-- [ ] Fold assignment from LUNA16 subsets, checking that no patient appears in two folds
+- [x] Fold assignment from LUNA16 subsets, checking that no patient appears in two folds
+- [x] `build-dataset` command producing an Ultralytics-ready dataset
 - [ ] Training notebook for a free cloud GPU (Kaggle / Colab)
 - [ ] Merge 2D slice detections into 3D candidates per scan
 - [ ] Results: FROC curve and CPM, compared with the thesis
