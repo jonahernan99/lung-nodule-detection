@@ -55,5 +55,11 @@ def test_invalid_number_reports_line(tmp_path):
 def test_nodule_contains_points_within_its_radius():
     nodule = Nodule("scan-a", (0.0, 0.0, 0.0), diameter_mm=10.0)
     assert nodule.radius_mm == 5.0
-    assert nodule.contains((3.0, 4.0, 0.0))  # distance 5: on the boundary
-    assert not nodule.contains((3.0, 4.0, 0.1))
+    assert nodule.contains((3.0, 3.9, 0.0))
+    assert not nodule.contains((3.0, 4.0, 0.0))  # distance 5: the boundary is outside
+
+
+def test_negative_diameter_uses_the_official_default_of_10_mm():
+    finding = Nodule("scan-a", (0.0, 0.0, 0.0), diameter_mm=-1.0)
+    assert finding.radius_mm == 5.0
+    assert finding.contains((4.9, 0.0, 0.0))

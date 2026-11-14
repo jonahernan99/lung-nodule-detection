@@ -17,6 +17,10 @@ from typing import TypeVar
 Point = tuple[float, float, float]
 _COORDINATES = ("coordX", "coordY", "coordZ")
 
+#: Diameter assumed for findings recorded with a negative diameter (no size),
+#: as in the official LUNA16 evaluation script (noduleCADEvaluationLUNA16.py).
+UNKNOWN_DIAMETER_MM = 10.0
+
 
 @dataclass(frozen=True)
 class Nodule:
@@ -28,11 +32,15 @@ class Nodule:
 
     @property
     def radius_mm(self) -> float:
-        return self.diameter_mm / 2
+        diameter = UNKNOWN_DIAMETER_MM if self.diameter_mm < 0 else self.diameter_mm
+        return diameter / 2
 
     def contains(self, point: Iterable[float]) -> bool:
-        """Whether ``point`` lies inside the sphere spanned by the nodule's diameter."""
-        return math.dist(self.center, tuple(point)) <= self.radius_mm
+        """Whether ``point`` lies strictly inside the nodule's radius.
+
+        The strict comparison matches the official LUNA16 evaluation script.
+        """
+        return math.dist(self.center, tuple(point)) < self.radius_mm
 
 
 @dataclass(frozen=True)
