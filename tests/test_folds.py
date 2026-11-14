@@ -31,10 +31,13 @@ def test_root_folder_name_is_not_mistaken_for_a_subset(tmp_path):
     assert find_scans(root)["1.2.3"][0] == 1
 
 
-def test_scans_outside_subsets_are_rejected(tmp_path):
-    touch(tmp_path / "loose" / "1.2.3.mhd")
-    with pytest.raises(ValueError, match="outside any subsetN"):
-        find_scans(tmp_path)
+def test_lung_masks_outside_subsets_are_ignored(tmp_path):
+    # Layout of the full LUNA16 download on Kaggle: nested subsets plus masks.
+    touch(tmp_path / "subset0" / "subset0" / "1.2.3.mhd")
+    touch(tmp_path / "seg-lungs-LUNA16" / "seg-lungs-LUNA16" / "1.2.3.mhd")
+    scans = find_scans(tmp_path)
+    assert list(scans) == ["1.2.3"]
+    assert "subset0" in scans["1.2.3"][1].parts
 
 
 def test_scan_in_two_subsets_is_rejected(tmp_path):

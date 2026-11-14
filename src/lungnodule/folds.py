@@ -35,21 +35,20 @@ def find_scans(root: str | Path) -> dict[str, tuple[int, Path]]:
     """Map each series UID to its LUNA16 subset and ``.mhd`` path.
 
     Scans may sit directly in ``subsetN`` folders or deeper inside them, as in
-    some re-uploads of the dataset.
+    some re-uploads of the dataset (``subset0/subset0/*.mhd``). ``.mhd`` files
+    outside any subset folder are ignored: the full LUNA16 download ships lung
+    segmentation masks in ``seg-lungs-LUNA16/`` with the same file names.
     """
+    root = Path(root)
     scans: dict[str, tuple[int, Path]] = {}
-    outside: list[str] = []
-    for path in sorted(Path(root).rglob("*.mhd")):
+    for path in sorted(root.rglob("*.mhd")):
         subset = _subset_of(path.relative_to(root))
         if subset is None:
-            outside.append(path.name)
             continue
         uid = path.stem
         if uid in scans and scans[uid][0] != subset:
             raise ValueError(f"Scan {uid} appears in subset{scans[uid][0]} and subset{subset}")
         scans[uid] = (subset, path)
-    if outside:
-        raise ValueError(f"Scans outside any subsetN folder: {', '.join(outside[:5])}")
     if not scans:
         raise ValueError(f"No .mhd scans found under {root}")
     return scans
