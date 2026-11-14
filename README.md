@@ -57,6 +57,34 @@ reported side by side with their evaluation protocols.
   export a ready-to-train YOLO dataset with an Ultralytics `data.yaml`. Test
   scans are only listed in `splits.csv`, because scan-level evaluation runs
   the detector on every slice of each test scan.
+- **`lungnodule.inference`**: runs any 2D detector over every slice of a scan,
+  with an adapter for trained Ultralytics YOLO weights.
+- **`lungnodule.candidates`**: merges detections of the same nodule on
+  neighbouring slices into one 3D candidate in world coordinates, so a nodule
+  seen on five slices is not counted as four false positives.
+- **`lungnodule.evaluation`** and the **`lungnodule evaluate`** command:
+  scan-level FROC/CPM on whole test scans, writing `candidates.csv` in the
+  LUNA16 submission format and `froc.json`.
+
+### Matching the official LUNA16 evaluation
+
+The hit criterion was checked line by line against the challenge's
+`noduleCADEvaluationLUNA16.py`: a candidate hits a nodule only when it is
+strictly within the nodule's radius, findings without a recorded size count as
+10 mm wide, a nodule found by several candidates counts once, and candidates on
+excluded findings are ignored. One deliberate difference: the official script
+interpolates sensitivity along the curve, while this code reports the highest
+sensitivity reached without exceeding each false-positive rate. The official
+script is Python 2 and does not run as is on Python 3.
+
+### Train and evaluate on Kaggle
+
+[`notebooks/kaggle_train.ipynb`](notebooks/kaggle_train.ipynb) runs the whole
+pipeline on a free Kaggle GPU with the `vafaeii/luna16` dataset attached: build
+the dataset, train YOLOv5s and evaluate per scan. It starts in `QUICK_RUN`
+mode, a short smoke test, before a full run. The model is Ultralytics'
+YOLOv5s variant with an anchor-free head, so it differs from the thesis, which
+used the original anchor-based YOLOv5s with tuned anchors.
 
 ### Build the training data
 
@@ -100,8 +128,9 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Preprocessing: read `.mhd` scans, apply a lung window and export slices with YOLO labels
 - [x] Fold assignment from LUNA16 subsets, checking that no patient appears in two folds
 - [x] `build-dataset` command producing an Ultralytics-ready dataset
-- [ ] Training notebook for a free cloud GPU (Kaggle / Colab)
-- [ ] Merge 2D slice detections into 3D candidates per scan
+- [x] Training notebook for a free cloud GPU (Kaggle)
+- [x] Merge 2D slice detections into 3D candidates per scan
+- [x] Hit criterion checked against the official LUNA16 evaluation script
 - [ ] Results: FROC curve and CPM, compared with the thesis
 - [ ] Eigen-CAM explainability maps
 - [ ] Experiment: stack neighbouring slices as color channels (2.5D input)
