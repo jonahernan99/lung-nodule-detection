@@ -62,3 +62,37 @@ def test_invalid_arguments_are_rejected(tmp_path, capsys, bad, message):
     with pytest.raises(SystemExit):
         main(args(tmp_path, tmp_path / "a.csv", tmp_path / "ds", *bad))
     assert message in capsys.readouterr().err
+
+
+def test_evaluate_prints_sensitivities_and_cpm(mini_luna, tmp_path, capsys, monkeypatch):
+    from lungnodule import inference
+
+    root, annotations = mini_luna
+    dataset = tmp_path / "ds"
+    assert main(args(root, annotations, dataset, "--test-subset", "8", "--val-subset", "9")) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        inference, "ultralytics_detector", lambda *a, **k: lambda images: [[] for _ in images]
+    )
+    code = main(
+        [
+            "evaluate",
+            "--luna-root",
+            str(root),
+            "--annotations",
+            str(annotations),
+            "--splits",
+            str(dataset / "splits.csv"),
+            "--weights",
+            "best.pt",
+            "--out",
+            str(tmp_path / "results"),
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert code == EXIT_OK
+    assert "Scans: 1, nodules: 1" in out
+    assert "CPM: 0.0000" in out
+    assert (tmp_path / "results" / "froc.json").exists()

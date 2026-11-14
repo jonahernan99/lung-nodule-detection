@@ -1,4 +1,4 @@
-"""Command-line interface: ``lungnodule build-dataset``."""
+"""Command-line interface: ``lungnodule build-dataset`` and ``lungnodule evaluate``."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lungnodule import inference
 from lungnodule.dataset import build_dataset
+from lungnodule.evaluation import evaluate_split
 from lungnodule.folds import check_patient_leaks, find_scans, load_patient_ids, split_by_subset
 
 EXIT_OK = 0
@@ -50,6 +52,22 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="CSV",
         help="LIDC-IDRI metadata mapping series UIDs to patients; stops if a patient leaks",
     )
+
+    evaluate = commands.add_parser("evaluate", help="Scan-level FROC/CPM on whole test scans")
+    evaluate.add_argument("--luna-root", type=Path, required=True, help="Folder with subset0..9")
+    evaluate.add_argument("--annotations", type=Path, required=True, help="LUNA16 annotations.csv")
+    evaluate.add_argument(
+        "--splits", type=Path, required=True, help="splits.csv from build-dataset"
+    )
+    evaluate.add_argument("--weights", type=Path, required=True, help="Trained YOLO weights (.pt)")
+    evaluate.add_argument("--out", type=Path, required=True, help="Folder for the reports")
+    evaluate.add_argument("--excluded", type=Path, help="LUNA16 annotations_excluded.csv")
+    evaluate.add_argument("--split", default="test", help="Split to evaluate (default: test)")
+    evaluate.add_argument("--max-scans", type=_positive_int, metavar="N")
+    evaluate.add_argument(
+        "--confidence", type=float, default=0.01, help="Lowest detection confidence kept"
+    )
+    evaluate.add_argument("--image-size", type=_positive_int, default=512)
     return parser
 
 
@@ -94,10 +112,37 @@ def _run_build(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _run_evaluate(args: argparse.Namespace) -> int:
+    detector = inference.ultralytics_detector(
+        str(args.weights), confidence=args.confidence, image_size=args.image_size
+    )
+
+    def progress(uid: str, detections: int, candidates: int) -> None:
+        print(f"{detections:>5} detections -> {candidates:>4} candidates  {uid}")
+
+    result = evaluate_split(
+        args.luna_root,
+        args.annotations,
+        args.splits,
+        detector,
+        args.out,
+        split=args.split,
+        excluded_csv=args.excluded,
+        max_scans=args.max_scans,
+        progress=progress,
+    )
+    print(f"\nScans: {result.total_scans}, nodules: {result.total_nodules}")
+    for rate, sensitivity in zip(result.fp_rates, result.sensitivities, strict=True):
+        print(f"  {rate:>5g} FP/scan  sensitivity {sensitivity:.3f}")
+    print(f"CPM: {result.cpm:.4f}  (reports in {args.out})")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    handlers = {"build-dataset": _run_build, "evaluate": _run_evaluate}
     try:
-        return _run_build(args)
+        return handlers[args.command](args)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
