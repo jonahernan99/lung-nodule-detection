@@ -67,15 +67,25 @@ def merge_detections(
     radii_mm = np.array([max(d.width * spacing_x, d.height * spacing_y) / 2 for d in detections])
     confidences = np.array([d.confidence for d in detections])
 
+    # Only detections on nearby slices can link, so each slice is compared with
+    # itself and the next ``max_slice_gap`` slices instead of with every other
+    # detection: a low confidence threshold can yield thousands per scan.
+    slices = voxels[:, 2].astype(int)
+    by_slice = {int(z): np.flatnonzero(slices == z) for z in np.unique(slices)}
     groups = _DisjointSet(len(detections))
-    for i in range(len(detections)):
-        for j in range(i + 1, len(detections)):
-            if abs(voxels[i, 2] - voxels[j, 2]) > max_slice_gap:
+    for z, here in by_slice.items():
+        for dz in range(max_slice_gap + 1):
+            there = by_slice.get(z + dz)
+            if there is None:
                 continue
-            dx_mm = (voxels[i, 0] - voxels[j, 0]) * spacing_x
-            dy_mm = (voxels[i, 1] - voxels[j, 1]) * spacing_y
-            if np.hypot(dx_mm, dy_mm) <= max(radii_mm[i], radii_mm[j]):
-                groups.union(i, j)
+            dx_mm = (voxels[here, 0][:, None] - voxels[there, 0][None, :]) * spacing_x
+            dy_mm = (voxels[here, 1][:, None] - voxels[there, 1][None, :]) * spacing_y
+            reach = np.maximum(radii_mm[here][:, None], radii_mm[there][None, :])
+            linked = np.hypot(dx_mm, dy_mm) <= reach
+            if dz == 0:
+                linked = np.triu(linked, k=1)  # same slice: each pair once, no self-links
+            for i, j in zip(*np.nonzero(linked), strict=True):
+                groups.union(int(here[i]), int(there[j]))
 
     members: dict[int, list[int]] = {}
     for i in range(len(detections)):

@@ -77,3 +77,58 @@ def test_perfect_slice_detections_give_perfect_scan_level_cpm():
 
     assert len(candidates) == 1
     assert compute_froc(candidates, {"uid": [nodule]}).cpm == 1.0
+
+
+def brute_force_groups(detections, spacing, max_slice_gap=1):
+    """Reference implementation: compare every pair of detections."""
+    parent = list(range(len(detections)))
+
+    def find(i):
+        while parent[i] != i:
+            i = parent[i]
+        return i
+
+    for i, a in enumerate(detections):
+        for j in range(i + 1, len(detections)):
+            b = detections[j]
+            if abs(a.z - b.z) > max_slice_gap:
+                continue
+            distance = np.hypot(
+                (a.x_center - b.x_center) * spacing[0], (a.y_center - b.y_center) * spacing[1]
+            )
+            reach = max(a.width * spacing[0], a.height * spacing[1], b.width * spacing[0],
+                        b.height * spacing[1]) / 2  # fmt: skip
+            if distance <= reach:
+                parent[find(i)] = find(j)
+    return len({find(i) for i in range(len(detections))})
+
+
+def random_detections(count, seed):
+    rng = np.random.default_rng(seed)
+    return [
+        SliceDetection(
+            int(rng.integers(0, 10)),
+            float(rng.uniform(0, 200)),
+            float(rng.uniform(0, 100)),
+            float(rng.uniform(2, 15)),
+            float(rng.uniform(2, 15)),
+            float(rng.uniform(0.01, 1)),
+        )
+        for _ in range(count)
+    ]
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_grouping_matches_a_brute_force_reference(seed):
+    detections = random_detections(250, seed)
+    expected = brute_force_groups(detections, SPACING)
+    assert len(merge_detections(detections, SCAN, "uid")) == expected
+
+
+def test_thousands_of_detections_are_merged_quickly():
+    import time
+
+    detections = random_detections(6000, seed=3)
+    start = time.perf_counter()
+    merge_detections(detections, SCAN, "uid")
+    assert time.perf_counter() - start < 10  # pairwise Python loops took minutes
