@@ -94,5 +94,6 @@ def test_evaluate_prints_sensitivities_and_cpm(mini_luna, tmp_path, capsys, monk
     out = capsys.readouterr().out
     assert code == EXIT_OK
     assert "Scans: 1, nodules: 1" in out
+    assert "Found nodules: 0, false positives: 0" in out
     assert "CPM: 0.0000" in out
     assert (tmp_path / "results" / "froc.json").exists()

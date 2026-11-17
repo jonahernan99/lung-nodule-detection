@@ -132,6 +132,11 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         progress=progress,
     )
     print(f"\nScans: {result.total_scans}, nodules: {result.total_nodules}")
+    print(
+        f"Found nodules: {result.found_nodules}, false positives: {result.false_positives}, "
+        f"duplicates ignored: {result.duplicate_candidates}, "
+        f"on excluded findings: {result.excluded_candidates}"
+    )
     for rate, sensitivity in zip(result.fp_rates, result.sensitivities, strict=True):
         print(f"  {rate:>5g} FP/scan  sensitivity {sensitivity:.3f}")
     print(f"CPM: {result.cpm:.4f}  (reports in {args.out})")
