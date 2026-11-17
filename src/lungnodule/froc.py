@@ -3,16 +3,18 @@
 The CPM is the mean sensitivity at 1/8, 1/4, 1/2, 1, 2, 4 and 8 false positives
 per scan. Matching follows the LUNA16 hit criterion:
 
-- A candidate is a true positive when it lies within a nodule's radius. A
-  nodule hit by several candidates counts once, with the highest probability.
-  The extra candidates are neither true nor false positives.
+- A candidate is a true positive when it lies strictly within a nodule's
+  radius. A nodule hit by several candidates counts once, with the highest
+  probability. The extra candidates are neither true nor false positives.
 - A candidate that misses every nodule but lies within an excluded finding
   (a lesion LUNA16 does not count as a nodule) is ignored.
 - Any other candidate is a false positive.
 
-The sensitivity reported for a false-positive rate is the highest sensitivity
-reached without exceeding that rate. The official LUNA16 script interpolates
-along the curve instead, so its values can differ slightly.
+By default the sensitivity at each false-positive rate is interpolated
+linearly along the curve from (0, 0), as the official LUNA16 evaluation script
+does. On the official sample submission the seven sensitivities match the
+official FROC curve to within 1e-9. ``interpolate=False`` instead reports the
+highest sensitivity reached without exceeding each rate.
 
 Rates are per scan, not per 2D slice. A per-slice rate allows hundreds of false
 positives in a single CT scan, so the two are not comparable.
@@ -32,31 +34,50 @@ FP_RATES: tuple[float, ...] = (0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
 
 @dataclass(frozen=True)
 class FrocResult:
-    """Sensitivities at fixed false-positive rates and the full FROC curve."""
+    """Sensitivities at fixed false-positive rates, candidate counts and the FROC curve."""
 
     fp_rates: tuple[float, ...]
     sensitivities: tuple[float, ...]
     cpm: float
     total_nodules: int
     total_scans: int
+    found_nodules: int
+    """Nodules hit by at least one candidate, at any probability."""
+    false_positives: int
+    duplicate_candidates: int
+    """Extra candidates on an already-hit nodule, ignored as in the official script."""
+    excluded_candidates: int
+    """Candidates on excluded findings, ignored rather than counted as false positives."""
     curve_fps_per_scan: tuple[float, ...]
     curve_sensitivity: tuple[float, ...]
 
 
+@dataclass
+class _ScanMatch:
+    best: list[float]
+    false_positives: list[float]
+    duplicates: int = 0
+    excluded: int = 0
+
+
 def _match_scan(
     candidates: Sequence[Candidate], nodules: Sequence[Nodule], excluded: Sequence[Nodule]
-) -> tuple[list[float], list[float]]:
-    """Return the best probability per nodule (``-inf`` if missed) and FP probabilities."""
-    best = [-np.inf] * len(nodules)
-    false_positives: list[float] = []
+) -> _ScanMatch:
+    """Best probability per nodule (``-inf`` if missed), FP probabilities and ignored counts."""
+    match = _ScanMatch(best=[-np.inf] * len(nodules), false_positives=[])
+    hits_per_nodule = [0] * len(nodules)
     for candidate in candidates:
         hits = [i for i, nodule in enumerate(nodules) if nodule.contains(candidate.center)]
         if hits:
             for i in hits:
-                best[i] = max(best[i], candidate.probability)
-        elif not any(finding.contains(candidate.center) for finding in excluded):
-            false_positives.append(candidate.probability)
-    return best, false_positives
+                hits_per_nodule[i] += 1
+                match.best[i] = max(match.best[i], candidate.probability)
+        elif any(finding.contains(candidate.center) for finding in excluded):
+            match.excluded += 1
+        else:
+            match.false_positives.append(candidate.probability)
+    match.duplicates = sum(max(0, count - 1) for count in hits_per_nodule)
+    return match
 
 
 def compute_froc(
@@ -66,6 +87,7 @@ def compute_froc(
     scan_ids: Iterable[str] | None = None,
     excluded_by_scan: Mapping[str, Sequence[Nodule]] | None = None,
     fp_rates: Sequence[float] = FP_RATES,
+    interpolate: bool = True,
 ) -> FrocResult:
     """Evaluate ``candidates`` against annotated nodules over a set of scans.
 
@@ -92,12 +114,15 @@ def compute_froc(
 
     nodule_scores: list[float] = []
     fp_scores: list[float] = []
+    duplicates = excluded = 0
     for scan in scans:
-        best, false_positives = _match_scan(
+        match = _match_scan(
             by_scan.get(scan, []), nodules_by_scan.get(scan, []), excluded_by_scan.get(scan, [])
         )
-        nodule_scores += best
-        fp_scores += false_positives
+        nodule_scores += match.best
+        fp_scores += match.false_positives
+        duplicates += match.duplicates
+        excluded += match.excluded
 
     if not nodule_scores:
         raise ValueError("No annotated nodules in the evaluated scans")
@@ -113,17 +138,26 @@ def compute_froc(
     curve_sensitivity = found / len(nodules)
     curve_fps = false / len(scans)
 
-    sensitivities = []
-    for rate in fp_rates:
-        allowed = curve_fps <= rate
-        sensitivities.append(float(curve_sensitivity[allowed].max()) if allowed.any() else 0.0)
+    if interpolate:
+        sensitivities = np.interp(
+            fp_rates, np.concatenate([[0.0], curve_fps]), np.concatenate([[0.0], curve_sensitivity])
+        ).tolist()
+    else:
+        sensitivities = []
+        for rate in fp_rates:
+            allowed = curve_fps <= rate
+            sensitivities.append(float(curve_sensitivity[allowed].max()) if allowed.any() else 0.0)
 
     return FrocResult(
         fp_rates=tuple(float(rate) for rate in fp_rates),
-        sensitivities=tuple(sensitivities),
+        sensitivities=tuple(float(s) for s in sensitivities),
         cpm=float(np.mean(sensitivities)),
         total_nodules=len(nodules),
         total_scans=len(scans),
+        found_nodules=len(finite),
+        false_positives=len(fps),
+        duplicate_candidates=duplicates,
+        excluded_candidates=excluded,
         curve_fps_per_scan=tuple(curve_fps.tolist()),
         curve_sensitivity=tuple(curve_sensitivity.tolist()),
     )

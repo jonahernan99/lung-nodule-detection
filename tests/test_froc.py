@@ -89,3 +89,31 @@ def test_custom_fp_rates():
     result = compute_froc([candidate("scan-a", INSIDE, 0.9)], {"scan-a": [NODULE]}, fp_rates=[1])
     assert result.fp_rates == (1.0,)
     assert result.cpm == 1.0
+
+
+def test_interpolation_follows_the_official_script_on_ties():
+    # A hit and a false positive share probability 0.9, so the curve jumps from
+    # (0, 0) straight to (1 FP/scan, sensitivity 1). The official script
+    # interpolates along that segment; the conservative mode does not.
+    candidates = [candidate("scan-a", INSIDE, 0.9), candidate("scan-a", OUTSIDE, 0.9)]
+    interpolated = compute_froc(candidates, {"scan-a": [NODULE]}, fp_rates=[0.5, 1.0])
+    conservative = compute_froc(
+        candidates, {"scan-a": [NODULE]}, fp_rates=[0.5, 1.0], interpolate=False
+    )
+    assert interpolated.sensitivities == pytest.approx((0.5, 1.0))
+    assert conservative.sensitivities == (0.0, 1.0)
+
+
+def test_candidate_counts_are_reported():
+    excluded = {"scan-a": [Nodule("scan-a", OUTSIDE, diameter_mm=6.0)]}
+    candidates = [
+        candidate("scan-a", INSIDE, 0.9),
+        candidate("scan-a", (2.0, 0.0, 0.0), 0.8),  # second hit on the same nodule
+        candidate("scan-a", OUTSIDE, 0.7),  # on an excluded finding
+        candidate("scan-a", (99.0, 0.0, 0.0), 0.6),  # false positive
+    ]
+    result = compute_froc(candidates, {"scan-a": [NODULE]}, excluded_by_scan=excluded)
+    assert result.found_nodules == 1
+    assert result.duplicate_candidates == 1
+    assert result.excluded_candidates == 1
+    assert result.false_positives == 1
