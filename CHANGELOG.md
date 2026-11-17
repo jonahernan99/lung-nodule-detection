@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-16
+
+### Changed
+
+- Sensitivities are interpolated along the FROC curve by default, as in the
+  official LUNA16 script; `interpolate=False` keeps the previous mode.
+
+### Added
+
+- Candidate counts in `FrocResult`, `lungnodule evaluate` and the notebook:
+  found nodules, false positives, ignored duplicates and candidates on
+  excluded findings.
+- `scripts/validate_official.py`: on the official sample submission, the
+  seven sensitivities match the official FROC curve to within 4e-10.
+- Tests against a Python 3 port of the official evaluation algorithm.
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
@@ -50,6 +66,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.4.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.1.0...v0.1.1
