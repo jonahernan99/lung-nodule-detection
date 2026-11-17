@@ -68,14 +68,38 @@ reported side by side with their evaluation protocols.
 
 ### Matching the official LUNA16 evaluation
 
-The hit criterion was checked line by line against the challenge's
-`noduleCADEvaluationLUNA16.py`: a candidate hits a nodule only when it is
-strictly within the nodule's radius, findings without a recorded size count as
-10 mm wide, a nodule found by several candidates counts once, and candidates on
-excluded findings are ignored. One deliberate difference: the official script
-interpolates sensitivity along the curve, while this code reports the highest
-sensitivity reached without exceeding each false-positive rate. The official
-script is Python 2 and does not run as is on Python 3.
+The metric is validated against the challenge's own evaluation code,
+`noduleCADEvaluationLUNA16.py`, in three ways:
+
+1. **Rules checked line by line:** a candidate hits a nodule only when it is
+   strictly within the nodule's radius, findings without a recorded size count
+   as 10 mm wide, a nodule found by several candidates counts once, candidates
+   on excluded findings are ignored, and sensitivities are interpolated along
+   the curve.
+2. **Same numbers on the official example.** The evaluation package ships a
+   sample submission and the FROC curve the official script produced for it.
+   [`scripts/validate_official.py`](scripts/validate_official.py) evaluates the
+   same 551,065 candidates over 888 scans:
+
+   | FP/scan | 0.125 | 0.25 | 0.5 | 1 | 2 | 4 | 8 |
+   | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+   | Official curve | 0.000000 | 0.000843 | 0.000843 | 0.001686 | 0.004216 | 0.007589 | 0.016020 |
+   | This code | 0.000000 | 0.000843 | 0.000843 | 0.001686 | 0.004216 | 0.007589 | 0.016020 |
+
+   The largest difference is 4e-10, and the found nodules (1,120) and
+   duplicate detections (231) match the official report exactly. The sample
+   is a deliberately weak submission, so its CPM is near zero.
+3. **Same results as a port of the official algorithm** on 20 random cases
+   with tied probabilities, excluded findings and negative diameters
+   ([`tests/test_froc_official.py`](tests/test_froc_official.py)).
+
+One documented discrepancy: the official example report ignores 1,294
+candidates on excluded findings, while the script shipped next to it, and this
+code, ignore 6,555. The difference is fully explained by the 10 mm rule for
+findings without a size: with negative diameters taken literally, this code
+reproduces the report's counts exactly (1,294 ignored, 548,420 false
+positives), so the report was produced by an earlier version of the script.
+The official script is Python 2 and does not run as is on Python 3.
 
 ### Train and evaluate on Kaggle
 
@@ -131,6 +155,7 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Training notebook for a free cloud GPU (Kaggle)
 - [x] Merge 2D slice detections into 3D candidates per scan
 - [x] Hit criterion checked against the official LUNA16 evaluation script
+- [x] FROC validated numerically against the official example evaluation
 - [ ] Results: FROC curve and CPM, compared with the thesis
 - [ ] Eigen-CAM explainability maps
 - [ ] Experiment: stack neighbouring slices as color channels (2.5D input)
