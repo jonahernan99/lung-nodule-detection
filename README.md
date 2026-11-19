@@ -5,11 +5,12 @@
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 **An independent reimplementation of my B.Eng. thesis on detecting lung nodules
-in CT scans, rebuilt with a stricter, patient-level evaluation.**
+in CT scans, rebuilt with a stricter, scan-level evaluation.**
 
-> **Status: work in progress.** The evaluation and data tooling come first, so
-> the model is judged correctly from its first training run. No results from
-> this repository are reported yet.
+> **Status:** first full training run done. On 88 held-out LUNA16 scans the
+> detector reaches a **CPM of 0.747** (95% CI 0.685–0.801) with false positives
+> counted per scan. See [Results](#results). Next: early stopping, Eigen-CAM and
+> a 2.5D input.
 
 ## Background
 
@@ -36,6 +37,59 @@ are also far more lenient than per scan, since one CT scan has around 200
 slices. The thesis reported **88.0% CPM** under those conditions. Expect this
 repository's numbers to come out lower and more realistic, and both will be
 reported side by side with their evaluation protocols.
+
+## Results
+
+First full run on a free Kaggle GPU with
+[`notebooks/kaggle_train.ipynb`](notebooks/kaggle_train.ipynb) (v0.4.0): trained
+on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
+(88 scans, 105 nodules). Ultralytics YOLOv5s (`yolov5su`, anchor-free head),
+512 px slices, 100 epochs, evaluated with the best validation checkpoint.
+
+| FP per scan | 0.125 | 0.25 | 0.5 | 1 | 2 | 4 | 8 | **CPM** |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sensitivity | 0.486 | 0.590 | 0.724 | 0.800 | 0.867 | 0.876 | 0.886 | **0.747** |
+
+- **95% confidence interval for the CPM: 0.685–0.801**, from 1,000 bootstrap
+  resamples of the test scans (`lungnodule.froc.bootstrap_cpm`). One fold of
+  88 scans leaves this much uncertainty, so the interval is reported with the
+  CPM.
+- At one false positive per scan, the detector finds 80% of the nodules. 101 of
+  the 105 nodules are found at some confidence; 4 are never detected.
+- **Checked independently:** re-scoring the run's 6,311 candidates offline with
+  `compute_froc` and with the port of the official LUNA16 algorithm gives the
+  same seven sensitivities. Numbers and settings are in
+  [`results/luna16-subset9/summary.json`](results/luna16-subset9/summary.json).
+
+![Scan-level FROC curve on 88 test scans, CPM 0.747](results/luna16-subset9/froc.png)
+
+### Compared with the thesis
+
+| | Thesis (2023) | This repository |
+| --- | --- | --- |
+| Data split | Mostly by 2D slice (LIDC-IDRI) | By scan: LUNA16 subset 9 held out |
+| False positives counted | Per slice | Per scan |
+| Model | YOLOv5s, anchor-based, tuned anchors | YOLOv5s, Ultralytics anchor-free head |
+| CPM | 88.0% | **74.7%** (95% CI 68.5–80.1%) |
+
+The two numbers are not directly comparable, and the drop is expected. A scan
+has around 200 slices, so "1 false positive per slice" allows about 200 per
+scan; here it allows one. The held-out scans also share no slices with
+training. The 74.7% is the honest estimate of how this 2D approach performs on
+unseen scans. (This run split by scan without the optional patient check; LIDC-IDRI
+has a few patients with more than one scan.) It is still well below leading LUNA16 systems, which use 3D
+context and report averages over all ten folds.
+
+### Training curves
+
+![Training and validation losses, precision, recall and mAP over 100 epochs](results/luna16-subset9/training_curves.png)
+
+Training losses fall steadily, but validation losses reach their minimum
+around epochs 25–45 and then rise, while validation mAP peaks near epoch 35 and
+slowly declines: the model starts to overfit. Because `best.pt` keeps the best
+validation epoch, the evaluated model is not the overfit final one, but the
+second half of training spent GPU time without improving it. Early stopping
+and stronger augmentation are the next experiments.
 
 ## What is implemented
 
@@ -64,7 +118,8 @@ reported side by side with their evaluation protocols.
   seen on five slices is not counted as four false positives.
 - **`lungnodule.evaluation`** and the **`lungnodule evaluate`** command:
   scan-level FROC/CPM on whole test scans, writing `candidates.csv` in the
-  LUNA16 submission format and `froc.json`.
+  LUNA16 submission format and `froc.json`, including a bootstrap confidence
+  interval for the CPM.
 
 ### Matching the official LUNA16 evaluation
 
@@ -156,13 +211,15 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Merge 2D slice detections into 3D candidates per scan
 - [x] Hit criterion checked against the official LUNA16 evaluation script
 - [x] FROC validated numerically against the official example evaluation
-- [ ] Results: FROC curve and CPM, compared with the thesis
+- [x] Results: FROC curve and CPM with a confidence interval, compared with the thesis
+- [ ] Early stopping and augmentation study (validation loss rises after epoch ~35)
 - [ ] Eigen-CAM explainability maps
 - [ ] Experiment: stack neighbouring slices as color channels (2.5D input)
+- [ ] All ten LUNA16 folds, to report a cross-validated CPM
 
 ## Data
 
-The model will be trained on [LUNA16](https://luna16.grand-challenge.org/Data/),
+The model is trained on [LUNA16](https://luna16.grand-challenge.org/Data/),
 a curated subset of LIDC-IDRI with 888 CT scans and 1,186 nodules accepted by at
 least three of four radiologists. Medical images are never committed to this
 repository. Download them from the official source and follow their terms of
@@ -178,5 +235,5 @@ pytest --cov=lungnodule
 
 ## License
 
-[AGPL-3.0](LICENSE), because the detector will be built on Ultralytics YOLO,
-which uses this license.
+[AGPL-3.0](LICENSE), because the detector is built on Ultralytics YOLO, which
+uses this license.
