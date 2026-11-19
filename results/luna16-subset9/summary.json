@@ -1,0 +1,64 @@
+{
+  "description": "First full training run on Kaggle (lungnodule 0.4.0 notebook, QUICK_RUN = False)",
+  "date": "2026-11-18",
+  "data": {
+    "dataset": "LUNA16 (Kaggle: vafaeii/luna16)",
+    "train_subsets": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "validation_subset": 8,
+    "test_subset": 9
+  },
+  "model": {
+    "weights": "yolov5su.pt (Ultralytics YOLOv5s with an anchor-free head)",
+    "image_size": 512,
+    "epochs": 100,
+    "batch": 16,
+    "seed": 0,
+    "evaluated_checkpoint": "best.pt (best validation fitness)",
+    "detection_confidence_kept": 0.01
+  },
+  "test": {
+    "scans": 88,
+    "nodules": 105,
+    "candidates": 6311,
+    "found_nodules": 101,
+    "false_positives": 5536,
+    "duplicate_candidates": 1,
+    "excluded_candidates": 673,
+    "fp_rates": [
+      0.125,
+      0.25,
+      0.5,
+      1.0,
+      2.0,
+      4.0,
+      8.0
+    ],
+    "sensitivities": [
+      0.4857142857142857,
+      0.5904761904761905,
+      0.7238095238095238,
+      0.8,
+      0.8666666666666667,
+      0.8761904761904762,
+      0.8857142857142857
+    ],
+    "cpm": 0.7469387755102039,
+    "cpm_interval": {
+      "lower": 0.6853812574068796,
+      "upper": 0.800811353211009,
+      "confidence": 0.95,
+      "samples": 1000,
+      "method": "percentile bootstrap over the 88 test scans (lungnodule.froc.bootstrap_cpm, seed 0)"
+    }
+  },
+  "verification": "The candidates were re-scored offline with lungnodule.froc.compute_froc and with the Python 3 port of the official LUNA16 algorithm in tests/test_froc_official.py: all seven sensitivities are identical to the Kaggle run."
+}
