@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-18
+
+### Added
+
+- First full results: CPM 0.747 (95% CI 0.685–0.801) on the 88 scans of LUNA16
+  subset 9, with the FROC curve, training curves and a summary in
+  `results/luna16-subset9/`. The candidates were re-scored offline with the
+  port of the official algorithm and give identical sensitivities.
+- `lungnodule.froc.bootstrap_cpm`: percentile bootstrap confidence interval for
+  the CPM, resampling scans with replacement.
+- `froc.json` from `lungnodule evaluate` and the notebook now includes
+  `cpm_interval`, and the CLI prints the interval next to the CPM.
+- The Kaggle notebook zips every result into `lung_nodule_results.zip` and turns
+  off Ultralytics' Ray Tune callback, which printed warnings on Kaggle.
+
+### Changed
+
+- The README describes the evaluation as scan-level: the run split by scan
+  without the optional patient check.
+
 ## [0.4.0] - 2026-11-16
 
 ### Changed
@@ -66,6 +86,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.5.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.1.1...v0.2.0
