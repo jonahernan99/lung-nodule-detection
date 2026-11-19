@@ -4,11 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `results/luna16-subset9/candidates.csv`: the full run's candidates.
+
+### Fixed
+
+- The CPM interval is 0.688–0.805, recomputed from the full-precision
+  candidates. 0.685–0.801 came from a copy with rounded probabilities.
+
 ## [0.5.0] - 2026-11-18
 
 ### Added
 
-- First full results: CPM 0.747 (95% CI 0.685–0.801) on the 88 scans of LUNA16
+- First full results: CPM 0.747 (95% CI 0.688–0.805) on the 88 scans of LUNA16
   subset 9, with the FROC curve, training curves and a summary in
   `results/luna16-subset9/`. The candidates were re-scored offline with the
   port of the official algorithm and give identical sensitivities.

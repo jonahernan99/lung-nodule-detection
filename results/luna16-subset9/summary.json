@@ -53,12 +53,17 @@
     ],
     "cpm": 0.7469387755102039,
     "cpm_interval": {
-      "lower": 0.6853812574068796,
-      "upper": 0.800811353211009,
+      "lower": 0.6882861233254934,
+      "upper": 0.804954481792717,
       "confidence": 0.95,
       "samples": 1000,
       "method": "percentile bootstrap over the 88 test scans (lungnodule.froc.bootstrap_cpm, seed 0)"
     }
   },
-  "verification": "The candidates were re-scored offline with lungnodule.froc.compute_froc and with the Python 3 port of the official LUNA16 algorithm in tests/test_froc_official.py: all seven sensitivities are identical to the Kaggle run."
+  "verification": "The candidates were re-scored offline with lungnodule.froc.compute_froc and with the Python 3 port of the official LUNA16 algorithm in tests/test_froc_official.py: all seven sensitivities are identical to the Kaggle run.",
+  "files": {
+    "candidates.csv": "The run's 6,311 candidates in the LUNA16 submission format",
+    "froc.png": "Scan-level FROC curve",
+    "training_curves.png": "Ultralytics training and validation curves"
+  }
 }

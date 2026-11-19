@@ -8,7 +8,7 @@
 in CT scans, rebuilt with a stricter, scan-level evaluation.**
 
 > **Status:** first full training run done. On 88 held-out LUNA16 scans the
-> detector reaches a **CPM of 0.747** (95% CI 0.685–0.801) with false positives
+> detector reaches a **CPM of 0.747** (95% CI 0.688–0.805) with false positives
 > counted per scan. See [Results](#results). Next: early stopping, Eigen-CAM and
 > a 2.5D input.
 
@@ -50,7 +50,7 @@ on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Sensitivity | 0.486 | 0.590 | 0.724 | 0.800 | 0.867 | 0.876 | 0.886 | **0.747** |
 
-- **95% confidence interval for the CPM: 0.685–0.801**, from 1,000 bootstrap
+- **95% confidence interval for the CPM: 0.688–0.805**, from 1,000 bootstrap
   resamples of the test scans (`lungnodule.froc.bootstrap_cpm`). One fold of
   88 scans leaves this much uncertainty, so the interval is reported with the
   CPM.
@@ -59,7 +59,10 @@ on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
 - **Checked independently:** re-scoring the run's 6,311 candidates offline with
   `compute_froc` and with the port of the official LUNA16 algorithm gives the
   same seven sensitivities. Numbers and settings are in
-  [`results/luna16-subset9/summary.json`](results/luna16-subset9/summary.json).
+  [`results/luna16-subset9/summary.json`](results/luna16-subset9/summary.json),
+  and the candidates in
+  [`results/luna16-subset9/candidates.csv`](results/luna16-subset9/candidates.csv),
+  so anyone can re-score them with the official script.
 
 ![Scan-level FROC curve on 88 test scans, CPM 0.747](results/luna16-subset9/froc.png)
 
@@ -70,7 +73,7 @@ on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
 | Data split | Mostly by 2D slice (LIDC-IDRI) | By scan: LUNA16 subset 9 held out |
 | False positives counted | Per slice | Per scan |
 | Model | YOLOv5s, anchor-based, tuned anchors | YOLOv5s, Ultralytics anchor-free head |
-| CPM | 88.0% | **74.7%** (95% CI 68.5–80.1%) |
+| CPM | 88.0% | **74.7%** (95% CI 68.8–80.5%) |
 
 The two numbers are not directly comparable, and the drop is expected. A scan
 has around 200 slices, so "1 false positive per slice" allows about 200 per
