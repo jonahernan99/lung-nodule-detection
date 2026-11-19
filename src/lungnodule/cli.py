@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -139,7 +140,10 @@ def _run_evaluate(args: argparse.Namespace) -> int:
     )
     for rate, sensitivity in zip(result.fp_rates, result.sensitivities, strict=True):
         print(f"  {rate:>5g} FP/scan  sensitivity {sensitivity:.3f}")
-    print(f"CPM: {result.cpm:.4f}  (reports in {args.out})")
+    report = json.loads((args.out / "froc.json").read_text(encoding="utf-8"))
+    interval = report.get("cpm_interval")
+    ci = f"  (95% CI {interval['lower']:.3f}-{interval['upper']:.3f})" if interval else ""
+    print(f"CPM: {result.cpm:.4f}{ci}  (reports in {args.out})")
     return EXIT_OK
 
 

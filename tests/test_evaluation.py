@@ -95,6 +95,8 @@ def test_oracle_detector_scores_perfect_cpm_and_writes_reports(built, tmp_path, 
     report = json.loads((out / "froc.json").read_text(encoding="utf-8"))
     assert report["cpm"] == 1.0
     assert report["split"] == "test"
+    assert report["cpm_interval"]["lower"] <= report["cpm"] <= report["cpm_interval"]["upper"]
+    assert report["cpm_interval"]["samples"] == 1000
     with (out / "candidates.csv").open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert [row["seriesuid"] for row in rows] == ["scan-c"]
@@ -129,3 +131,12 @@ def test_scans_missing_from_disk_are_reported(built, tmp_path):
     (empty_root / "subset0" / "scan-z.mhd").write_text("x", encoding="utf-8")
     with pytest.raises(ValueError, match="test scans are not under"):
         evaluate_split(empty_root, annotations, splits, lambda images: [], tmp_path)
+
+
+def test_bootstrap_can_be_skipped(built, tmp_path):
+    root, annotations, splits = built
+    out = tmp_path / "results"
+    no_detections = lambda images: [[] for _ in images]  # noqa: E731
+    evaluate_split(root, annotations, splits, no_detections, out, bootstrap_samples=0)
+    report = json.loads((out / "froc.json").read_text(encoding="utf-8"))
+    assert "cpm_interval" not in report

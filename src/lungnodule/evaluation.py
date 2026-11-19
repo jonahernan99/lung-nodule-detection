@@ -7,8 +7,8 @@ scan-level FROC/CPM. Two files are written:
 - ``candidates.csv`` in the LUNA16 submission format
   (``seriesuid, coordX, coordY, coordZ, probability``), which the official
   evaluation script can also read;
-- ``froc.json`` with the CPM, the sensitivity at each false-positive rate and
-  the full FROC curve.
+- ``froc.json`` with the CPM and its bootstrap confidence interval, the
+  sensitivity at each false-positive rate and the full FROC curve.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 from lungnodule.annotations import Candidate, load_annotations
 from lungnodule.candidates import merge_detections
 from lungnodule.folds import find_scans
-from lungnodule.froc import FrocResult, compute_froc
+from lungnodule.froc import FrocResult, bootstrap_cpm, compute_froc
 from lungnodule.inference import Detector, detect_scan
 from lungnodule.preprocess import load_scan
 
@@ -53,14 +53,16 @@ def evaluate_split(
     excluded_csv: str | Path | None = None,
     max_scans: int | None = None,
     batch_size: int = 16,
+    bootstrap_samples: int = 1000,
     progress: Callable[[str, int, int], None] | None = None,
 ) -> FrocResult:
     """Run ``detector`` on every scan of ``split`` and compute scan-level FROC.
 
     ``excluded_csv`` is LUNA16's ``annotations_excluded.csv``: candidates on
     those findings are ignored rather than counted as false positives, as in
-    the official evaluation. ``progress`` receives ``(uid, detections,
-    candidates)`` after each scan.
+    the official evaluation. ``bootstrap_samples`` resamples the scans to add a
+    95% confidence interval for the CPM to ``froc.json`` (0 skips it).
+    ``progress`` receives ``(uid, detections, candidates)`` after each scan.
     """
     scans = find_scans(luna_root)
     uids = sorted(uid for uid, name in read_splits(splits_csv).items() if name == split)
@@ -95,5 +97,14 @@ def evaluate_split(
     out_dir.mkdir(parents=True, exist_ok=True)
     write_candidates(candidates, out_dir / "candidates.csv")
     report = {"split": split, "candidates": len(candidates), **asdict(result)}
+    if bootstrap_samples:
+        interval = bootstrap_cpm(
+            candidates,
+            {uid: nodules.get(uid, []) for uid in uids},
+            scan_ids=uids,
+            excluded_by_scan=excluded,
+            samples=bootstrap_samples,
+        )
+        report["cpm_interval"] = asdict(interval)
     (out_dir / "froc.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return result
