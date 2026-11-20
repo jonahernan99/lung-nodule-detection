@@ -4,22 +4,33 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-20
 
 ### Added
 
-- `results/luna16-subset9/candidates.csv`: the full run's candidates.
+- `lungnodule.breakdown.sensitivity_by_size` and the `lungnodule breakdown`
+  command: detected nodules by size at chosen false-positive rates. On subset 9,
+  at 1 FP per scan: 69% of nodules under 6 mm, 85% of 6-10 mm, 90% of 10-20 mm
+  and 100% of 20 mm or more.
+- `lungnodule score`: FROC/CPM with a bootstrap interval for any candidates
+  file, without images or a GPU.
+- `results/luna16-subset9/`: the run's `candidates.csv`, the list of test
+  scans and `by_size.json`.
 
 ### Fixed
 
-- The CPM interval is 0.688–0.805, recomputed from the full-precision
-  candidates. 0.685–0.801 came from a copy with rounded probabilities.
+- Bootstrap intervals are reproducible across Python processes. Scans were
+  processed in set order, which depends on the string hash seed, so the same
+  seed could give different draws. The subset 9 interval, recomputed from the
+  full-precision candidates in sorted order, is 0.690-0.801. Earlier figures
+  (0.685-0.801 from a copy with rounded probabilities, then 0.688-0.805) are
+  superseded.
 
 ## [0.5.0] - 2026-11-18
 
 ### Added
 
-- First full results: CPM 0.747 (95% CI 0.688–0.805) on the 88 scans of LUNA16
+- First full results: CPM 0.747 (95% CI 0.690–0.801, see 0.6.0) on the 88 scans of LUNA16
   subset 9, with the FROC curve, training curves and a summary in
   `results/luna16-subset9/`. The candidates were re-scored offline with the
   port of the official algorithm and give identical sensitivities.
@@ -97,6 +108,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.6.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.2.0...v0.3.0
