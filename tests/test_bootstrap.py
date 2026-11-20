@@ -75,3 +75,34 @@ def test_invalid_arguments(samples, confidence):
 def test_no_nodules_is_an_error():
     with pytest.raises(ValueError, match="No annotated nodules"):
         bootstrap_cpm([Candidate("scan-a", (0.0, 0.0, 0.0), 0.5)], {}, samples=10)
+
+
+def test_interval_does_not_depend_on_scan_order():
+    candidates, nodules = mixed_case()
+    scans = list(nodules)
+    forward = bootstrap_cpm(candidates, nodules, scan_ids=scans, samples=200)
+    backward = bootstrap_cpm(candidates, nodules, scan_ids=scans[::-1], samples=200)
+    assert forward == backward
+
+
+def test_interval_is_reproducible_across_processes(tmp_path):
+    # Set iteration order changes with the hash seed of each Python process.
+    import os
+    import subprocess
+    import sys
+
+    script = (
+        "from test_bootstrap import mixed_case\n"
+        "from lungnodule.froc import bootstrap_cpm\n"
+        "c, n = mixed_case()\n"
+        "print(bootstrap_cpm(c, n, samples=200).lower)\n"
+    )
+    results = set()
+    for seed in ("1", "2", "3"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        env["PYTHONPATH"] = os.pathsep.join([os.path.dirname(__file__), env.get("PYTHONPATH", "")])
+        out = subprocess.run(
+            [sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True
+        )
+        results.add(out.stdout.strip())
+    assert len(results) == 1

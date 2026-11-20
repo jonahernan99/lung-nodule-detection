@@ -97,7 +97,11 @@ def _match_all(
     scan_ids: Iterable[str] | None,
     excluded_by_scan: Mapping[str, Sequence[Nodule]] | None,
 ) -> dict[str, _ScanMatch]:
-    """Match the candidates of every evaluated scan, keyed by scan."""
+    """Match the candidates of every evaluated scan, keyed by scan in sorted order.
+
+    The order is fixed (sorted series UIDs, not set order, which changes between
+    Python processes) so that bootstrap draws with a given seed are reproducible.
+    """
     candidates = list(candidates)
     excluded_by_scan = excluded_by_scan or {}
     scans = (
@@ -118,7 +122,7 @@ def _match_all(
         scan: _match_scan(
             by_scan.get(scan, []), nodules_by_scan.get(scan, []), excluded_by_scan.get(scan, [])
         )
-        for scan in scans
+        for scan in sorted(scans)
     }
 
 
