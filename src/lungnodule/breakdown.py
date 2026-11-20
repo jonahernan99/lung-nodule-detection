@@ -41,7 +41,7 @@ def _label(lower: float, upper: float) -> str:
         return f"under {upper:g} mm"
     if math.isinf(upper):
         return f"{lower:g} mm or more"
-    return f"{lower:g}–{upper:g} mm"
+    return f"{lower:g}-{upper:g} mm"
 
 
 @dataclass(frozen=True)

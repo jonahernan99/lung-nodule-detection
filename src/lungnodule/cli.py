@@ -1,17 +1,21 @@
-"""Command-line interface: ``lungnodule build-dataset`` and ``lungnodule evaluate``."""
+"""Command-line interface: ``build-dataset``, ``evaluate``, ``score`` and ``breakdown``."""
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from lungnodule import inference
+from lungnodule.annotations import load_annotations, load_candidates
+from lungnodule.breakdown import sensitivity_by_size
 from lungnodule.dataset import build_dataset
 from lungnodule.evaluation import evaluate_split
 from lungnodule.folds import check_patient_leaks, find_scans, load_patient_ids, split_by_subset
+from lungnodule.froc import FP_RATES, bootstrap_cpm, compute_froc
 
 EXIT_OK = 0
 EXIT_ERROR = 2
@@ -69,6 +73,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--confidence", type=float, default=0.01, help="Lowest detection confidence kept"
     )
     evaluate.add_argument("--image-size", type=_positive_int, default=512)
+
+    for name, help_text in (
+        ("score", "FROC/CPM with a confidence interval for a candidates CSV"),
+        ("breakdown", "Sensitivity by nodule size for a candidates CSV"),
+    ):
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument(
+            "--candidates", type=Path, required=True, help="CSV in the LUNA16 submission format"
+        )
+        command.add_argument(
+            "--annotations", type=Path, required=True, help="LUNA16 annotations.csv"
+        )
+        command.add_argument("--excluded", type=Path, help="LUNA16 annotations_excluded.csv")
+        command.add_argument(
+            "--scans",
+            type=Path,
+            metavar="FILE",
+            help="Evaluated series UIDs, one per line (first CSV column); "
+            "default: the scans in the candidates file",
+        )
+        command.add_argument("--out", type=Path, help="Write the results as JSON")
+    commands.choices["breakdown"].add_argument(
+        "--fp-rate",
+        type=float,
+        nargs="+",
+        default=[0.125, 1.0, 8.0],
+        help="False positives per scan at which to report (default: 0.125 1 8)",
+    )
     return parser
 
 
@@ -147,9 +179,79 @@ def _run_evaluate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _read_scan_ids(path: Path) -> list[str]:
+    """Series UIDs from the first column of a text or CSV file, skipping a header row."""
+    with path.open(encoding="utf-8", newline="") as handle:
+        ids = [row[0].strip() for row in csv.reader(handle) if row and row[0].strip()]
+    return [uid for uid in ids if uid.lower() != "seriesuid"]
+
+
+def _load_scored(args: argparse.Namespace):
+    candidates = load_candidates(args.candidates)
+    annotations = load_annotations(args.annotations)
+    excluded = load_annotations(args.excluded) if args.excluded is not None else {}
+    if args.scans is not None:
+        scans = _read_scan_ids(args.scans)
+    else:
+        scans = sorted({candidate.series_uid for candidate in candidates})
+        print(
+            f"note: evaluating the {len(scans)} scans in the candidates file; pass --scans to "
+            "include scans without candidates",
+            file=sys.stderr,
+        )
+    return candidates, {uid: annotations.get(uid, []) for uid in scans}, scans, excluded
+
+
+def _write_json(path: Path | None, data: object) -> None:
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def _run_score(args: argparse.Namespace) -> int:
+    candidates, nodules, scans, excluded = _load_scored(args)
+    result = compute_froc(candidates, nodules, scan_ids=scans, excluded_by_scan=excluded)
+    interval = bootstrap_cpm(candidates, nodules, scan_ids=scans, excluded_by_scan=excluded)
+    print(f"Scans: {result.total_scans}, nodules: {result.total_nodules}")
+    for rate, sensitivity in zip(FP_RATES, result.sensitivities, strict=True):
+        print(f"  {rate:>5g} FP/scan  sensitivity {sensitivity:.3f}")
+    print(f"CPM: {result.cpm:.4f}  (95% CI {interval.lower:.3f}-{interval.upper:.3f})")
+    _write_json(
+        args.out,
+        {
+            "cpm": result.cpm,
+            "cpm_interval": {"lower": interval.lower, "upper": interval.upper},
+            "fp_rates": list(result.fp_rates),
+            "sensitivities": list(result.sensitivities),
+            "total_scans": result.total_scans,
+            "total_nodules": result.total_nodules,
+        },
+    )
+    return EXIT_OK
+
+
+def _run_breakdown(args: argparse.Namespace) -> int:
+    candidates, nodules, scans, excluded = _load_scored(args)
+    breakdowns = sensitivity_by_size(
+        candidates, nodules, scan_ids=scans, excluded_by_scan=excluded, fp_rates=args.fp_rate
+    )
+    for breakdown in breakdowns:
+        print(f"\nAt {breakdown.fp_rate:g} FP/scan (sensitivity {breakdown.sensitivity:.3f}):")
+        for row in breakdown.rows:
+            share = "-" if row.sensitivity is None else f"{row.sensitivity:.0%}"
+            print(f"  {row.size:<14} {row.detected:>4} of {row.nodules:<4} detected  {share:>5}")
+    _write_json(args.out, [breakdown.as_dict() for breakdown in breakdowns])
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    handlers = {"build-dataset": _run_build, "evaluate": _run_evaluate}
+    handlers = {
+        "build-dataset": _run_build,
+        "evaluate": _run_evaluate,
+        "score": _run_score,
+        "breakdown": _run_breakdown,
+    }
     try:
         return handlers[args.command](args)
     except (OSError, ValueError) as exc:

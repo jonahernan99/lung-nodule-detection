@@ -49,10 +49,10 @@ def test_counts_per_size_bin():
     assert breakdown.threshold == 0.4
     rows = {row.size: row for row in breakdown.rows}
     assert rows["under 6 mm"].detected == 1
-    assert rows["6–10 mm"].detected == 0
-    assert rows["6–10 mm"].found_at_any_score == 1
+    assert rows["6-10 mm"].detected == 0
+    assert rows["6-10 mm"].found_at_any_score == 1
     assert rows["20 mm or more"].detected == 1
-    assert rows["10–20 mm"].nodules == 0 and rows["10–20 mm"].sensitivity is None
+    assert rows["10-20 mm"].nodules == 0 and rows["10-20 mm"].sensitivity is None
     assert breakdown.sensitivity == pytest.approx(2 / 3)
 
 

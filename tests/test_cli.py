@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from lungnodule.cli import EXIT_ERROR, EXIT_OK, main
@@ -97,3 +99,76 @@ def test_evaluate_prints_sensitivities_and_cpm(mini_luna, tmp_path, capsys, monk
     assert "Found nodules: 0, false positives: 0" in out
     assert "CPM: 0.0000  (95% CI 0.000-0.000)" in out
     assert (tmp_path / "results" / "froc.json").exists()
+
+
+def write_scored_files(tmp_path):
+    annotations = tmp_path / "annotations.csv"
+    annotations.write_text(
+        "seriesuid,coordX,coordY,coordZ,diameter_mm\n"
+        "scan-a,0,0,0,4.0\n"
+        "scan-a,100,0,0,12.0\n"
+        "scan-b,0,0,0,25.0\n",
+        encoding="utf-8",
+    )
+    candidates = tmp_path / "candidates.csv"
+    candidates.write_text(
+        "seriesuid,coordX,coordY,coordZ,probability\n"
+        "scan-a,0.5,0,0,0.9\n"
+        "scan-a,100.5,0,0,0.2\n"
+        "scan-b,0.5,0,0,0.7\n"
+        "scan-b,300,300,300,0.5\n"
+        "scan-a,-300,300,300,0.3\n",
+        encoding="utf-8",
+    )
+    return annotations, candidates
+
+
+def test_score_reports_cpm_with_an_interval(tmp_path, capsys):
+    annotations, candidates = write_scored_files(tmp_path)
+    out = tmp_path / "score.json"
+    code = main(
+        [
+            "score",
+            "--candidates",
+            str(candidates),
+            "--annotations",
+            str(annotations),
+            "--out",
+            str(out),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert "Scans: 2, nodules: 3" in captured.out
+    assert "95% CI" in captured.out
+    assert "evaluating the 2 scans in the candidates file" in captured.err
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["cpm_interval"]["lower"] <= report["cpm"] <= report["cpm_interval"]["upper"]
+
+
+def test_breakdown_lists_detections_by_size(tmp_path, capsys):
+    annotations, candidates = write_scored_files(tmp_path)
+    scans = tmp_path / "scans.csv"
+    scans.write_text("seriesuid\nscan-a\nscan-b\nscan-c\n", encoding="utf-8")
+    out = tmp_path / "by_size.json"
+    args = ["breakdown", "--candidates", str(candidates), "--annotations", str(annotations)]
+    args += ["--scans", str(scans), "--fp-rate", "0.34", "--out", str(out)]
+    code = main(args)
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert captured.err == ""  # scans were given explicitly
+    # 3 scans at 0.34 FP/scan allow one of the two false positives (0.5), so the
+    # threshold is 0.3 and only the hit at 0.2 falls below it.
+    assert "under 6 mm        1 of 1    detected   100%" in captured.out
+    assert "10-20 mm          0 of 1    detected     0%" in captured.out
+    (report,) = json.loads(out.read_text(encoding="utf-8"))
+    assert report["fp_rate"] == 0.34
+    assert report["sensitivity"] == pytest.approx(2 / 3)
+
+
+def test_score_with_a_missing_file_is_an_error(tmp_path, capsys):
+    annotations, _ = write_scored_files(tmp_path)
+    missing = str(tmp_path / "nope.csv")
+    code = main(["score", "--candidates", missing, "--annotations", str(annotations)])
+    assert code == EXIT_ERROR
+    assert "error:" in capsys.readouterr().err
