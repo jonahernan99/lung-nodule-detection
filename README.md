@@ -8,7 +8,7 @@
 in CT scans, rebuilt with a stricter, scan-level evaluation.**
 
 > **Status:** first full training run done. On 88 held-out LUNA16 scans the
-> detector reaches a **CPM of 0.747** (95% CI 0.688–0.805) with false positives
+> detector reaches a **CPM of 0.747** (95% CI 0.690–0.801) with false positives
 > counted per scan. See [Results](#results). Next: early stopping, Eigen-CAM and
 > a 2.5D input.
 
@@ -50,7 +50,7 @@ on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Sensitivity | 0.486 | 0.590 | 0.724 | 0.800 | 0.867 | 0.876 | 0.886 | **0.747** |
 
-- **95% confidence interval for the CPM: 0.688–0.805**, from 1,000 bootstrap
+- **95% confidence interval for the CPM: 0.690–0.801**, from 1,000 bootstrap
   resamples of the test scans (`lungnodule.froc.bootstrap_cpm`). One fold of
   88 scans leaves this much uncertainty, so the interval is reported with the
   CPM.
@@ -62,9 +62,29 @@ on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
   [`results/luna16-subset9/summary.json`](results/luna16-subset9/summary.json),
   and the candidates in
   [`results/luna16-subset9/candidates.csv`](results/luna16-subset9/candidates.csv),
-  so anyone can re-score them with the official script.
+  so anyone can re-score them with the official script or with
+  `lungnodule score` (see [Score a candidates file](#score-a-candidates-file)).
 
 ![Scan-level FROC curve on 88 test scans, CPM 0.747](results/luna16-subset9/froc.png)
+
+### Detection by nodule size
+
+The CPM averages over every nodule. Broken down by size
+([`by_size.json`](results/luna16-subset9/by_size.json)), the weak spot is clear:
+
+| Nodule size | Nodules | Found at 1/8 FP per scan | Found at 1 FP per scan | Found at 8 FP per scan |
+| --- | ---: | ---: | ---: | ---: |
+| Under 6 mm | 45 | 16 (36%) | 31 (69%) | 38 (84%) |
+| 6–10 mm | 34 | 18 (53%) | 29 (85%) | 31 (91%) |
+| 10–20 mm | 20 | 11 (55%) | 18 (90%) | 18 (90%) |
+| 20 mm or more | 6 | 6 (100%) | 6 (100%) | 6 (100%) |
+
+Small nodules are 43% of the test set and account for most of the misses: at
+one false positive per scan, 14 of the 21 missed nodules are under 6 mm. On a
+512 px slice such a nodule spans only a few pixels, and it appears on few
+slices, so a 2D detector has little to go on. Larger inputs or a 2.5D input that stacks
+neighbouring slices are the natural experiments to target it. The groups above
+6 mm are small (6 to 34 nodules), so their percentages are rough.
 
 ### Compared with the thesis
 
@@ -73,15 +93,16 @@ on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
 | Data split | Mostly by 2D slice (LIDC-IDRI) | By scan: LUNA16 subset 9 held out |
 | False positives counted | Per slice | Per scan |
 | Model | YOLOv5s, anchor-based, tuned anchors | YOLOv5s, Ultralytics anchor-free head |
-| CPM | 88.0% | **74.7%** (95% CI 68.8–80.5%) |
+| CPM | 88.0% | **74.7%** (95% CI 69.0–80.1%) |
 
 The two numbers are not directly comparable, and the drop is expected. A scan
 has around 200 slices, so "1 false positive per slice" allows about 200 per
 scan; here it allows one. The held-out scans also share no slices with
 training. The 74.7% is the honest estimate of how this 2D approach performs on
-unseen scans. (This run split by scan without the optional patient check; LIDC-IDRI
-has a few patients with more than one scan.) It is still well below leading LUNA16 systems, which use 3D
-context and report averages over all ten folds.
+unseen scans. (This run split by scan without the optional patient check;
+LIDC-IDRI has a few patients with more than one scan.) It is still well below
+leading LUNA16 systems, which use 3D context and report averages over all ten
+folds.
 
 ### Training curves
 
@@ -119,6 +140,9 @@ and stronger augmentation are the next experiments.
 - **`lungnodule.candidates`**: merges detections of the same nodule on
   neighbouring slices into one 3D candidate in world coordinates, so a nodule
   seen on five slices is not counted as four false positives.
+- **`lungnodule.breakdown`** and the **`lungnodule score`** and
+  **`lungnodule breakdown`** commands: score any candidates file and report
+  detected nodules by size at chosen false-positive rates.
 - **`lungnodule.evaluation`** and the **`lungnodule evaluate`** command:
   scan-level FROC/CPM on whole test scans, writing `candidates.csv` in the
   LUNA16 submission format and `froc.json`, including a bootstrap confidence
@@ -168,6 +192,22 @@ mode, a short smoke test, before a full run. The model is Ultralytics'
 YOLOv5s variant with an anchor-free head, so it differs from the thesis, which
 used the original anchor-based YOLOv5s with tuned anchors.
 
+### Score a candidates file
+
+Any CSV in the LUNA16 submission format can be scored without images or a GPU:
+
+```bash
+lungnodule score --candidates results/luna16-subset9/candidates.csv \
+  --annotations annotations.csv --excluded annotations_excluded.csv \
+  --scans results/luna16-subset9/test_scans.txt      # CPM 0.7469 (95% CI 0.690-0.801)
+lungnodule breakdown --candidates results/luna16-subset9/candidates.csv \
+  --annotations annotations.csv --excluded annotations_excluded.csv \
+  --scans results/luna16-subset9/test_scans.txt --fp-rate 0.125 1 8 --out by_size.json
+```
+
+`--scans` lists every evaluated scan, so scans without any candidate still
+count towards false positives per scan.
+
 ### Build the training data
 
 ```bash
@@ -215,6 +255,7 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Hit criterion checked against the official LUNA16 evaluation script
 - [x] FROC validated numerically against the official example evaluation
 - [x] Results: FROC curve and CPM with a confidence interval, compared with the thesis
+- [x] Sensitivity by nodule size (small nodules are the main weakness)
 - [ ] Early stopping and augmentation study (validation loss rises after epoch ~35)
 - [ ] Eigen-CAM explainability maps
 - [ ] Experiment: stack neighbouring slices as color channels (2.5D input)
