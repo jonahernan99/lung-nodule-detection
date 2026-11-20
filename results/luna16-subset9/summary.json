@@ -53,17 +53,20 @@
     ],
     "cpm": 0.7469387755102039,
     "cpm_interval": {
-      "lower": 0.6882861233254934,
-      "upper": 0.804954481792717,
+      "lower": 0.689864864864865,
+      "upper": 0.800717285768832,
       "confidence": 0.95,
       "samples": 1000,
-      "method": "percentile bootstrap over the 88 test scans (lungnodule.froc.bootstrap_cpm, seed 0)"
+      "method": "percentile bootstrap over the 88 test scans (lungnodule.froc.bootstrap_cpm, seed 0, scans in sorted order; lungnodule 0.6.0)"
     }
   },
   "verification": "The candidates were re-scored offline with lungnodule.froc.compute_froc and with the Python 3 port of the official LUNA16 algorithm in tests/test_froc_official.py: all seven sensitivities are identical to the Kaggle run.",
   "files": {
     "candidates.csv": "The run's 6,311 candidates in the LUNA16 submission format",
     "froc.png": "Scan-level FROC curve",
-    "training_curves.png": "Ultralytics training and validation curves"
-  }
+    "training_curves.png": "Ultralytics training and validation curves",
+    "test_scans.txt": "Series UIDs of the 88 test scans (LUNA16 subset 9), for --scans",
+    "by_size.json": "Detected nodules by size at 0.125, 1 and 8 false positives per scan (lungnodule breakdown)"
+  },
+  "reproduce": "lungnodule score --candidates candidates.csv --annotations annotations.csv --excluded annotations_excluded.csv --scans test_scans.txt"
 }
