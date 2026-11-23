@@ -2,7 +2,8 @@ import csv
 
 import pytest
 
-from lungnodule.dataset import build_dataset
+from lungnodule.dataset import build_dataset, load_input_config
+from lungnodule.preprocess import InputConfig
 
 
 def test_builds_yolo_layout_and_skips_test_scans(mini_luna, tmp_path):
@@ -74,3 +75,22 @@ def test_invalid_split_choice_is_reported(mini_luna, tmp_path):
     root, annotations = mini_luna
     with pytest.raises(ValueError, match="No scans in subset5"):
         build_dataset(root, annotations, tmp_path / "dataset", test_subset=5)
+
+
+def test_input_config_is_saved_and_read_back(mini_luna, tmp_path):
+    root, annotations = mini_luna
+    config = InputConfig(mode="stack", stack_mm=3.0)
+    build_dataset(root, annotations, tmp_path / "stack", negatives=1, input_config=config)
+    build_dataset(root, annotations, tmp_path / "gray", negatives=1)
+
+    assert load_input_config(tmp_path / "stack") == config
+    assert load_input_config(tmp_path / "gray") == InputConfig()
+    image = next((tmp_path / "stack" / "train" / "images").glob("*.png"))
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    assert Image.open(image).mode == "RGB"
+
+
+def test_datasets_without_a_config_file_used_gray_slices(tmp_path):
+    assert load_input_config(tmp_path) == InputConfig()

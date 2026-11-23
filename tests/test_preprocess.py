@@ -6,6 +6,7 @@ import pytest
 from lungnodule.annotations import Nodule
 from lungnodule.preprocess import (
     CTScan,
+    InputConfig,
     YoloBox,
     apply_window,
     export_slices,
@@ -109,6 +110,29 @@ def test_export_writes_images_and_labels(tmp_path):
     image = np.asarray(Image.open(tmp_path / "images" / "uid_0005.png"))
     assert image.shape == (100, 200)
     assert image.dtype == np.uint8
+
+
+def test_stack_export_writes_rgb_images_with_the_gray_slice_in_the_middle(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    hu = np.stack([np.full(SHAPE[1:], -1000 + 50 * z, dtype=np.int16) for z in range(SHAPE[0])])
+    scan = CTScan(hu=hu, origin=(0.0, 0.0, 0.0), spacing=SPACING)
+    export_slices(scan, [NODULE], "uid", tmp_path / "gray", negatives=0)
+    export_slices(
+        scan, [NODULE], "uid", tmp_path / "stack", negatives=0, config=InputConfig(mode="stack")
+    )
+
+    gray = np.asarray(Image.open(tmp_path / "gray" / "images" / "uid_0005.png"))
+    stack = np.asarray(Image.open(tmp_path / "stack" / "images" / "uid_0005.png"))
+    assert stack.shape == (100, 200, 3)
+    assert (stack[:, :, 1] == gray).all()
+    # 2 mm at 2 mm spacing is one slice: channels hold slices 4, 5 and 6.
+    assert [int(stack[0, 0, c]) for c in range(3)] == [
+        int(apply_window(np.array([-1000 + 50 * z]))[0]) for z in (4, 5, 6)
+    ]
+    labels = sorted(p.name for p in (tmp_path / "stack" / "labels").iterdir())
+    assert labels == sorted(p.name for p in (tmp_path / "gray" / "labels").iterdir())
 
 
 def test_load_scan_reads_geometry_from_disk(tmp_path):

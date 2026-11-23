@@ -26,6 +26,15 @@ def test_build_dataset_prints_summary(mini_luna, tmp_path, capsys):
     assert (tmp_path / "ds" / "data.yaml").exists()
 
 
+def test_build_dataset_with_stacked_input(mini_luna, tmp_path):
+    root, annotations = mini_luna
+    out = tmp_path / "ds"
+    extra = ("--negatives", "1", "--input", "stack", "--stack-mm", "5")
+    assert main(args(root, annotations, out, *extra)) == EXIT_OK
+    saved = json.loads((out / "preprocessing.json").read_text(encoding="utf-8"))
+    assert saved == {"mode": "stack", "stack_mm": 5.0, "window": [-600.0, 1500.0]}
+
+
 def test_patient_leak_stops_the_build(mini_luna, tmp_path, capsys):
     root, annotations = mini_luna
     metadata = tmp_path / "metadata.csv"
@@ -58,6 +67,8 @@ def test_missing_luna_folder_is_reported(tmp_path, capsys):
     [
         (["--test-subset", "10"], "numbered 0 to 9"),
         (["--max-scans", "0"], "must be at least 1"),
+        (["--input", "rgb"], "invalid choice"),
+        (["--stack-mm", "0"], "must be positive"),
     ],
 )
 def test_invalid_arguments_are_rejected(tmp_path, capsys, bad, message):

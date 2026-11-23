@@ -16,6 +16,7 @@ from lungnodule.dataset import build_dataset
 from lungnodule.evaluation import evaluate_split
 from lungnodule.folds import check_patient_leaks, find_scans, load_patient_ids, split_by_subset
 from lungnodule.froc import FP_RATES, bootstrap_cpm, compute_froc
+from lungnodule.preprocess import DEFAULT_STACK_MM, INPUT_MODES, InputConfig
 
 EXIT_OK = 0
 EXIT_ERROR = 2
@@ -25,6 +26,13 @@ def _subset(value: str) -> int:
     number = int(value)
     if not 0 <= number <= 9:
         raise argparse.ArgumentTypeError("LUNA16 subsets are numbered 0 to 9")
+    return number
+
+
+def _positive_float(value: str) -> float:
+    number = float(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
     return number
 
 
@@ -56,6 +64,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="CSV",
         help="LIDC-IDRI metadata mapping series UIDs to patients; stops if a patient leaks",
+    )
+    build.add_argument(
+        "--input",
+        choices=INPUT_MODES,
+        default="gray",
+        help="gray: one slice; stack: neighbouring slices as color channels (2.5D)",
+    )
+    build.add_argument(
+        "--stack-mm",
+        type=_positive_float,
+        default=DEFAULT_STACK_MM,
+        metavar="MM",
+        help=f"Distance to each neighbouring slice in stack mode (default: {DEFAULT_STACK_MM})",
     )
 
     evaluate = commands.add_parser("evaluate", help="Scan-level FROC/CPM on whole test scans")
@@ -134,6 +155,7 @@ def _run_build(args: argparse.Namespace) -> int:
         val_subset=args.val_subset,
         negatives=args.negatives,
         max_scans_per_split=args.max_scans,
+        input_config=InputConfig(mode=args.input, stack_mm=args.stack_mm),
         progress=progress,
     )
     print(

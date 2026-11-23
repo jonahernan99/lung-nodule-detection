@@ -220,13 +220,14 @@ def export_slices(
     *,
     negatives: int = 4,
     min_fraction: float = DEFAULT_MIN_FRACTION,
-    window: tuple[float, float] = LUNG_WINDOW,
+    config: InputConfig | None = None,
     seed: int = 0,
 ) -> int:
     """Write PNG slices to ``out_dir/images`` and YOLO labels to ``out_dir/labels``.
 
-    Negative slices get an empty label file, which YOLO reads as background.
-    Returns the number of slices written.
+    Images are grayscale in ``gray`` mode and RGB in ``stack`` mode (see
+    ``slice_image``). Negative slices get an empty label file, which YOLO reads
+    as background. Returns the number of slices written.
     """
     try:
         from PIL import Image
@@ -246,7 +247,7 @@ def export_slices(
     slices = sorted(positives + background)
     for z in slices:
         name = f"{series_uid}_{z:04d}"
-        Image.fromarray(apply_window(scan.hu[z], *window)).save(images_dir / f"{name}.png")
+        Image.fromarray(slice_image(scan, z, config)).save(images_dir / f"{name}.png")
         lines = [box.to_line() for box in nodule_boxes(scan, nodules, z, min_fraction=min_fraction)]
         (labels_dir / f"{name}.txt").write_text("".join(f"{line}\n" for line in lines))
     return len(slices)
