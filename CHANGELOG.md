@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-22
+
+### Added
+
+- 2.5D input: `lungnodule build-dataset --input stack` puts the slices about
+  `--stack-mm` (default 2 mm) on either side of each slice in the color
+  channels. The offset in slices is computed from each scan's spacing.
+- `preprocessing.json` in every built dataset. `lungnodule evaluate` and
+  `evaluate_split(..., input_config=...)` use it, so evaluation always matches
+  the training input; datasets without the file are read as gray.
+  `froc.json` records the input used.
+- Kaggle notebook settings `INPUT_MODE`, `STACK_MM` and `PATIENCE` (early
+  stopping, default 20 epochs); hue and saturation augmentation are off in
+  stack mode.
+
+### Changed
+
+- `export_slices` and `detect_scan` take an `InputConfig` instead of a
+  `window` argument.
+- The Ultralytics adapter passes images in BGR order, as Ultralytics expects;
+  gray inputs are unaffected.
+
 ## [0.6.0] - 2026-11-20
 
 ### Added
@@ -108,6 +130,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.7.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.3.0...v0.4.0
