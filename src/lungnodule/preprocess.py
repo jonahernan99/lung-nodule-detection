@@ -1,5 +1,14 @@
 """Turn CT scans into 2D slices with YOLO labels for nodule detection.
 
+Two input representations are supported (see ``InputConfig``):
+
+- ``gray``: the windowed slice alone, repeated in every color channel by the
+  detector, as in the thesis;
+- ``stack`` (2.5D): the slices about ``stack_mm`` below and above the labeled
+  slice fill the first and last color channels, so a 2D detector sees some 3D
+  context. A vessel runs through neighbouring slices while a small nodule
+  appears and disappears, which a single slice cannot show.
+
 Each nodule is treated as a sphere. A slice receives a box where the slice
 cuts that sphere, with the box sized to the circular cross-section rather than
 the nodule's full diameter. Slices that only graze the edge of a nodule are
@@ -26,6 +35,13 @@ LUNG_WINDOW: tuple[float, float] = (-600.0, 1500.0)
 #: fraction of its full radius.
 DEFAULT_MIN_FRACTION = 0.5
 
+INPUT_MODES: tuple[str, ...] = ("gray", "stack")
+
+#: Distance between the labeled slice and each neighbour in ``stack`` mode. A
+#: 6 mm nodule (radius 3 mm) still crosses both neighbours, so the channels
+#: show it shrinking rather than vanishing.
+DEFAULT_STACK_MM = 2.0
+
 
 @dataclass(frozen=True)
 class CTScan:
@@ -38,6 +54,67 @@ class CTScan:
     origin: tuple[float, float, float]
     spacing: tuple[float, float, float]
     direction: tuple[float, ...] | None = None
+
+
+@dataclass(frozen=True)
+class InputConfig:
+    """How a CT slice becomes a detector input image.
+
+    The same configuration must be used to build the training data and to run
+    the trained detector; ``build_dataset`` stores it next to the dataset.
+    """
+
+    mode: str = "gray"
+    stack_mm: float = DEFAULT_STACK_MM
+    window: tuple[float, float] = LUNG_WINDOW
+
+    def __post_init__(self) -> None:
+        if self.mode not in INPUT_MODES:
+            raise ValueError(f"Unknown input mode {self.mode!r}; choose from {INPUT_MODES}")
+        if self.stack_mm <= 0:
+            raise ValueError("stack_mm must be positive")
+        object.__setattr__(self, "window", tuple(float(v) for v in self.window))
+
+    def to_dict(self) -> dict:
+        return {"mode": self.mode, "stack_mm": self.stack_mm, "window": list(self.window)}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> InputConfig:
+        return cls(
+            mode=data.get("mode", "gray"),
+            stack_mm=float(data.get("stack_mm", DEFAULT_STACK_MM)),
+            window=tuple(data.get("window", LUNG_WINDOW)),
+        )
+
+
+def neighbour_offset(spacing_z: float, stack_mm: float = DEFAULT_STACK_MM) -> int:
+    """Number of slices between the center and each neighbour in ``stack`` mode.
+
+    Slice spacing in LUNA16 ranges from about 0.6 to 2.5 mm, so a fixed
+    distance in millimetres keeps the context comparable across scans. The
+    offset is at least one slice.
+    """
+    if spacing_z <= 0:
+        raise ValueError("Slice spacing must be positive")
+    return max(1, round(stack_mm / spacing_z))
+
+
+def slice_image(scan: CTScan, z: int, config: InputConfig | None = None) -> np.ndarray:
+    """The detector input for slice ``z``: ``(H, W)`` for ``gray``, ``(H, W, 3)`` for ``stack``.
+
+    In ``stack`` mode the channels are, in RGB order, the slices at
+    ``z - offset``, ``z`` and ``z + offset``, with indices clamped to the
+    volume so edge slices repeat themselves. ``config`` defaults to ``gray``.
+    """
+    config = config or InputConfig()
+    depth = scan.hu.shape[0]
+    if not 0 <= z < depth:
+        raise IndexError(f"Slice {z} is outside a volume of {depth} slices")
+    if config.mode == "gray":
+        return apply_window(scan.hu[z], *config.window)
+    offset = neighbour_offset(scan.spacing[2], config.stack_mm)
+    indices = (max(z - offset, 0), z, min(z + offset, depth - 1))
+    return np.stack([apply_window(scan.hu[i], *config.window) for i in indices], axis=-1)
 
 
 @dataclass(frozen=True)
