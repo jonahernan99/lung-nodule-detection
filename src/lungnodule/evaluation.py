@@ -24,7 +24,7 @@ from lungnodule.candidates import merge_detections
 from lungnodule.folds import find_scans
 from lungnodule.froc import FrocResult, bootstrap_cpm, compute_froc
 from lungnodule.inference import Detector, detect_scan
-from lungnodule.preprocess import load_scan
+from lungnodule.preprocess import InputConfig, load_scan
 
 
 def read_splits(path: str | Path) -> dict[str, str]:
@@ -52,6 +52,7 @@ def evaluate_split(
     split: str = "test",
     excluded_csv: str | Path | None = None,
     max_scans: int | None = None,
+    input_config: InputConfig | None = None,
     batch_size: int = 16,
     bootstrap_samples: int = 1000,
     progress: Callable[[str, int, int], None] | None = None,
@@ -60,8 +61,10 @@ def evaluate_split(
 
     ``excluded_csv`` is LUNA16's ``annotations_excluded.csv``: candidates on
     those findings are ignored rather than counted as false positives, as in
-    the official evaluation. ``bootstrap_samples`` resamples the scans to add a
-    95% confidence interval for the CPM to ``froc.json`` (0 skips it).
+    the official evaluation. ``input_config`` must match the training data
+    (see ``lungnodule.dataset.load_input_config``). ``bootstrap_samples``
+    resamples the scans to add a 95% confidence interval for the CPM to
+    ``froc.json`` (0 skips it).
     ``progress`` receives ``(uid, detections, candidates)`` after each scan.
     """
     scans = find_scans(luna_root)
@@ -74,13 +77,14 @@ def evaluate_split(
     if missing:
         raise ValueError(f"{len(missing)} {split} scans are not under {luna_root}: {missing[:3]}")
 
+    input_config = input_config or InputConfig()
     nodules = load_annotations(annotations_csv)
     excluded = load_annotations(excluded_csv) if excluded_csv is not None else {}
 
     candidates: list[Candidate] = []
     for uid in uids:
         scan = load_scan(scans[uid][1])
-        detections = detect_scan(scan, detector, batch_size=batch_size)
+        detections = detect_scan(scan, detector, config=input_config, batch_size=batch_size)
         found = merge_detections(detections, scan, uid)
         candidates.extend(found)
         if progress is not None:
@@ -96,7 +100,12 @@ def evaluate_split(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     write_candidates(candidates, out_dir / "candidates.csv")
-    report = {"split": split, "candidates": len(candidates), **asdict(result)}
+    report = {
+        "split": split,
+        "input": input_config.to_dict(),
+        "candidates": len(candidates),
+        **asdict(result),
+    }
     if bootstrap_samples:
         interval = bootstrap_cpm(
             candidates,

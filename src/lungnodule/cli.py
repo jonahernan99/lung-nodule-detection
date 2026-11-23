@@ -12,7 +12,7 @@ from pathlib import Path
 from lungnodule import inference
 from lungnodule.annotations import load_annotations, load_candidates
 from lungnodule.breakdown import sensitivity_by_size
-from lungnodule.dataset import build_dataset
+from lungnodule.dataset import build_dataset, load_input_config
 from lungnodule.evaluation import evaluate_split
 from lungnodule.folds import check_patient_leaks, find_scans, load_patient_ids, split_by_subset
 from lungnodule.froc import FP_RATES, bootstrap_cpm, compute_froc
@@ -172,6 +172,12 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         str(args.weights), confidence=args.confidence, image_size=args.image_size
     )
 
+    input_config = load_input_config(args.splits.parent)
+    if input_config.mode == "stack":
+        print(f"Input: stacked slices {input_config.stack_mm:g} mm apart (from the dataset)")
+    else:
+        print("Input: gray slices (from the dataset)")
+
     def progress(uid: str, detections: int, candidates: int) -> None:
         print(f"{detections:>5} detections -> {candidates:>4} candidates  {uid}")
 
@@ -184,6 +190,7 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         split=args.split,
         excluded_csv=args.excluded,
         max_scans=args.max_scans,
+        input_config=input_config,
         progress=progress,
     )
     print(f"\nScans: {result.total_scans}, nodules: {result.total_nodules}")

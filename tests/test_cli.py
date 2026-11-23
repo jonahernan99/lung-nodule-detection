@@ -88,6 +88,8 @@ def test_evaluate_prints_sensitivities_and_cpm(mini_luna, tmp_path, capsys, monk
     monkeypatch.setattr(
         inference, "ultralytics_detector", lambda *a, **k: lambda images: [[] for _ in images]
     )
+    # Datasets built before preprocessing.json existed are read as gray.
+    (dataset / "preprocessing.json").unlink()
     code = main(
         [
             "evaluate",
@@ -106,10 +108,46 @@ def test_evaluate_prints_sensitivities_and_cpm(mini_luna, tmp_path, capsys, monk
 
     out = capsys.readouterr().out
     assert code == EXIT_OK
+    assert "Input: gray slices (from the dataset)" in out
     assert "Scans: 1, nodules: 1" in out
     assert "Found nodules: 0, false positives: 0" in out
     assert "CPM: 0.0000  (95% CI 0.000-0.000)" in out
     assert (tmp_path / "results" / "froc.json").exists()
+
+
+def test_evaluate_uses_the_dataset_input(mini_luna, tmp_path, capsys, monkeypatch):
+    from lungnodule import inference
+
+    root, annotations = mini_luna
+    dataset = tmp_path / "ds"
+    build = args(root, annotations, dataset, "--test-subset", "8", "--val-subset", "9")
+    assert main([*build, "--input", "stack"]) == EXIT_OK
+    capsys.readouterr()
+    shapes = set()
+
+    def detector(images):
+        shapes.update(image.shape for image in images)
+        return [[] for _ in images]
+
+    monkeypatch.setattr(inference, "ultralytics_detector", lambda *a, **k: detector)
+    code = main(
+        [
+            "evaluate",
+            "--luna-root",
+            str(root),
+            "--annotations",
+            str(annotations),
+            "--splits",
+            str(dataset / "splits.csv"),
+            "--weights",
+            "best.pt",
+            "--out",
+            str(tmp_path / "results"),
+        ]
+    )
+    assert code == EXIT_OK
+    assert "Input: stacked slices 2 mm apart (from the dataset)" in capsys.readouterr().out
+    assert shapes == {(64, 64, 3)}
 
 
 def write_scored_files(tmp_path):

@@ -6,7 +6,7 @@ import pytest
 from lungnodule.annotations import load_annotations
 from lungnodule.dataset import build_dataset
 from lungnodule.evaluation import evaluate_split, read_splits, write_candidates
-from lungnodule.preprocess import nodule_boxes
+from lungnodule.preprocess import InputConfig, nodule_boxes
 
 
 def oracle_detector(annotations_csv, uid_holder):
@@ -16,7 +16,8 @@ def oracle_detector(annotations_csv, uid_holder):
     def detect(images):
         scan, start = uid_holder["scan"], uid_holder["next_z"]
         uid_holder["next_z"] += len(images)
-        height, width = images[0].shape
+        uid_holder.setdefault("shapes", set()).update(image.shape for image in images)
+        height, width = images[0].shape[:2]
         results = []
         for offset in range(len(images)):
             boxes = nodule_boxes(scan, nodules.get(uid_holder["uid"], []), start + offset)
@@ -95,6 +96,7 @@ def test_oracle_detector_scores_perfect_cpm_and_writes_reports(built, tmp_path, 
     report = json.loads((out / "froc.json").read_text(encoding="utf-8"))
     assert report["cpm"] == 1.0
     assert report["split"] == "test"
+    assert report["input"]["mode"] == "gray"
     assert report["cpm_interval"]["lower"] <= report["cpm"] <= report["cpm_interval"]["upper"]
     assert report["cpm_interval"]["samples"] == 1000
     with (out / "candidates.csv").open(encoding="utf-8") as handle:
@@ -140,3 +142,35 @@ def test_bootstrap_can_be_skipped(built, tmp_path):
     evaluate_split(root, annotations, splits, no_detections, out, bootstrap_samples=0)
     report = json.loads((out / "froc.json").read_text(encoding="utf-8"))
     assert "cpm_interval" not in report
+
+
+def test_stacked_input_reaches_the_detector_and_the_report(built, tmp_path, monkeypatch):
+    root, annotations, splits = built
+    holder = {}
+    import lungnodule.evaluation as evaluation
+
+    real_load_scan = evaluation.load_scan
+
+    def tracking_load_scan(path):
+        scan = real_load_scan(path)
+        holder.update(scan=scan, uid=path.stem, next_z=0)
+        return scan
+
+    monkeypatch.setattr(evaluation, "load_scan", tracking_load_scan)
+    out = tmp_path / "results"
+    config = InputConfig(mode="stack", stack_mm=5.0)
+
+    result = evaluate_split(
+        root,
+        annotations,
+        splits,
+        oracle_detector(annotations, holder),
+        out,
+        input_config=config,
+        bootstrap_samples=0,
+    )
+
+    assert result.cpm == 1.0
+    assert holder["shapes"] == {(64, 64, 3)}
+    report = json.loads((out / "froc.json").read_text(encoding="utf-8"))
+    assert report["input"] == {"mode": "stack", "stack_mm": 5.0, "window": [-600.0, 1500.0]}

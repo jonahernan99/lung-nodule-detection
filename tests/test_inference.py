@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from lungnodule.inference import detect_scan
-from lungnodule.preprocess import CTScan
+from lungnodule.inference import detect_scan, to_model_input
+from lungnodule.preprocess import CTScan, InputConfig
 
 SCAN = CTScan(hu=np.full((5, 32, 48), -600, dtype=np.int16), origin=(0, 0, 0), spacing=(1, 1, 1))
 
@@ -42,3 +42,45 @@ def test_detector_returning_wrong_number_of_results_is_an_error():
 def test_batch_size_must_be_positive():
     with pytest.raises(ValueError, match="batch_size"):
         detect_scan(SCAN, RecordingDetector(), batch_size=0)
+
+
+def test_stacked_input_gives_three_channel_slices():
+    shapes = []
+
+    def detector(images):
+        shapes.extend(image.shape for image in images)
+        return [[] for _ in images]
+
+    detect_scan(SCAN, detector, config=InputConfig(mode="stack"), batch_size=2)
+    assert shapes == [(32, 48, 3)] * 5
+
+
+def test_model_input_repeats_gray_slices():
+    image = np.arange(6, dtype=np.uint8).reshape(2, 3)
+    converted = to_model_input(image)
+    assert converted.shape == (2, 3, 3)
+    assert all((converted[:, :, c] == image).all() for c in range(3))
+
+
+def test_model_input_reverses_stacked_channels_to_bgr():
+    # Channels in RGB order: slice below, center slice, slice above.
+    image = np.stack([np.full((2, 2), v, dtype=np.uint8) for v in (10, 20, 30)], axis=-1)
+    converted = to_model_input(image)
+    assert [int(converted[0, 0, c]) for c in range(3)] == [30, 20, 10]
+    assert converted.flags["C_CONTIGUOUS"]
+
+
+def test_model_input_matches_how_training_images_are_read(tmp_path):
+    """A stacked PNG read back as OpenCV does (BGR) equals the array passed to predict."""
+    from PIL import Image
+
+    image = np.stack([np.full((2, 2), v, dtype=np.uint8) for v in (10, 20, 30)], axis=-1)
+    Image.fromarray(image).save(tmp_path / "slice.png")
+    read_rgb = np.asarray(Image.open(tmp_path / "slice.png"))
+    read_bgr = read_rgb[:, :, ::-1]  # what cv2.imread returns for the same file
+    assert (to_model_input(image) == read_bgr).all()
+
+
+def test_model_input_rejects_other_shapes():
+    with pytest.raises(ValueError, match="Expected"):
+        to_model_input(np.zeros((2, 2, 4), dtype=np.uint8))

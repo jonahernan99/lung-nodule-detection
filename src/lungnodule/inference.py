@@ -1,8 +1,9 @@
 """Run a 2D detector over every slice of a CT scan.
 
-The detector is any callable that takes a batch of 8-bit grayscale slices and
-returns, for each slice, a list of ``(x_center, y_center, width, height,
-confidence)`` boxes in pixels. Keeping that interface small means the
+The detector is any callable that takes a batch of 8-bit slice images, built
+by ``slice_image`` (``(H, W)`` gray or ``(H, W, 3)`` stacked, channels in RGB
+order), and returns, for each slice, a list of ``(x_center, y_center, width,
+height, confidence)`` boxes in pixels. Keeping that interface small means the
 pipeline can be tested with a fake detector and used with any model;
 ``ultralytics_detector`` adapts a trained Ultralytics YOLO model.
 """
@@ -14,7 +15,7 @@ from collections.abc import Callable, Sequence
 import numpy as np
 
 from lungnodule.candidates import SliceDetection
-from lungnodule.preprocess import LUNG_WINDOW, CTScan, apply_window
+from lungnodule.preprocess import CTScan, InputConfig, slice_image
 
 Box = tuple[float, float, float, float, float]
 Detector = Callable[[Sequence[np.ndarray]], Sequence[Sequence[Box]]]
@@ -24,23 +25,42 @@ def detect_scan(
     scan: CTScan,
     detector: Detector,
     *,
-    window: tuple[float, float] = LUNG_WINDOW,
+    config: InputConfig | None = None,
     batch_size: int = 16,
 ) -> list[SliceDetection]:
-    """Return the detector's boxes on every slice, windowed like the training data."""
+    """Return the detector's boxes on every slice, prepared like the training data.
+
+    ``config`` must match the one the training data was built with (gray by
+    default).
+    """
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1")
     detections = []
     depth = scan.hu.shape[0]
     for start in range(0, depth, batch_size):
         indices = range(start, min(start + batch_size, depth))
-        images = [apply_window(scan.hu[z], *window) for z in indices]
+        images = [slice_image(scan, z, config) for z in indices]
         results = detector(images)
         if len(results) != len(images):
             raise ValueError(f"Detector returned {len(results)} results for {len(images)} slices")
         for z, boxes in zip(indices, results, strict=True):
             detections.extend(SliceDetection(z, *box) for box in boxes)
     return detections
+
+
+def to_model_input(image: np.ndarray) -> np.ndarray:
+    """Convert a slice image to the ``(H, W, 3)`` BGR array Ultralytics expects.
+
+    Ultralytics reads training PNGs with OpenCV, which returns BGR, and flips
+    them to RGB; ``predict`` likewise treats numpy arrays as BGR. A stacked
+    RGB image (``z - offset``, ``z``, ``z + offset``) is therefore reversed
+    here, so the model sees the channels in the order it was trained on.
+    """
+    if image.ndim == 2:
+        return np.repeat(image[:, :, None], 3, axis=2)
+    if image.ndim == 3 and image.shape[2] == 3:
+        return np.ascontiguousarray(image[:, :, ::-1])
+    raise ValueError(f"Expected an (H, W) or (H, W, 3) image, got shape {image.shape}")
 
 
 def ultralytics_detector(
@@ -61,9 +81,12 @@ def ultralytics_detector(
     model = YOLO(weights)
 
     def detect(images: Sequence[np.ndarray]) -> list[list[Box]]:  # pragma: no cover - needs model
-        rgb = [np.repeat(image[:, :, None], 3, axis=2) for image in images]
         results = model.predict(
-            rgb, conf=confidence, imgsz=image_size, device=device, verbose=False
+            [to_model_input(image) for image in images],
+            conf=confidence,
+            imgsz=image_size,
+            device=device,
+            verbose=False,
         )
         boxes = []
         for result in results:
