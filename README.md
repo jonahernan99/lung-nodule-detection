@@ -9,8 +9,9 @@ in CT scans, rebuilt with a stricter, scan-level evaluation.**
 
 > **Status:** first full training run done. On 88 held-out LUNA16 scans the
 > detector reaches a **CPM of 0.747** (95% CI 0.690–0.801) with false positives
-> counted per scan. See [Results](#results). Next: early stopping, Eigen-CAM and
-> a 2.5D input.
+> counted per scan. See [Results](#results). Next: a run comparing the single-slice
+> input with a [2.5D input](#25d-input-experiment) built for small nodules, then
+> Eigen-CAM.
 
 ## Background
 
@@ -83,7 +84,8 @@ Small nodules are 43% of the test set and account for most of the misses: at
 one false positive per scan, 14 of the 21 missed nodules are under 6 mm. On a
 512 px slice such a nodule spans only a few pixels, and it appears on few
 slices, so a 2D detector has little to go on. Larger inputs or a 2.5D input that stacks
-neighbouring slices are the natural experiments to target it. The groups above
+neighbouring slices are the natural experiments to target it; the
+[2.5D input](#25d-input-experiment) is implemented and awaiting a run. The groups above
 6 mm are small (6 to 34 nodules), so their percentages are rough.
 
 ### Compared with the thesis
@@ -112,8 +114,33 @@ Training losses fall steadily, but validation losses reach their minimum
 around epochs 25–45 and then rise, while validation mAP peaks near epoch 35 and
 slowly declines: the model starts to overfit. Because `best.pt` keeps the best
 validation epoch, the evaluated model is not the overfit final one, but the
-second half of training spent GPU time without improving it. Early stopping
-and stronger augmentation are the next experiments.
+second half of training spent GPU time without improving it. The notebook now
+stops training 20 epochs after the best validation fitness (`PATIENCE`).
+
+### 2.5D input (experiment)
+
+A 2D detector sees one slice at a time. A small nodule and a vessel can look
+the same there: the difference is in depth, where a vessel continues through
+neighbouring slices and a nodule appears and fades within a few millimetres.
+`--input stack` puts the slices about 2 mm on either side in the red and blue
+channels, with the labeled slice in green, so the same YOLO network gets that
+context without any change to its architecture.
+
+- The distance is set in millimetres (`--stack-mm`) and converted per scan,
+  since LUNA16 slice spacing ranges from about 0.6 to 2.5 mm. At 2 mm, a 6 mm
+  nodule still crosses both neighbours.
+- The choice is saved in `dataset/preprocessing.json` and read back by
+  `evaluate`, so a model is always evaluated on the kind of image it was
+  trained on.
+- Ultralytics reads training images in BGR order and treats arrays passed to
+  `predict` as BGR too, so the detector adapter reverses the stacked channels
+  before predicting; a test checks that the two paths give the same array.
+- Hue and saturation augmentation would mix the channels, so the notebook turns
+  them off in `stack` mode.
+
+The comparison will be two full Kaggle runs on the same split with early
+stopping, one with `INPUT_MODE = "gray"` and one with `"stack"`, reported with
+CPM intervals and the size breakdown. No result is claimed until then.
 
 ## What is implemented
 
@@ -125,7 +152,8 @@ and stronger augmentation are the next experiments.
 - **`lungnodule.geometry`**: conversion between world coordinates (mm) and
   voxel indices, including scans with flipped axes.
 - **`lungnodule.preprocess`**: reads `.mhd` scans, applies a lung window and
-  exports 2D slices with YOLO labels. Each box is sized to the nodule's
+  exports 2D slices with YOLO labels, as gray images or as 2.5D stacks of
+  neighbouring slices. Each box is sized to the nodule's
   cross-section on that slice. Background slices are sampled only from slices
   that do not touch any nodule, so a barely visible nodule is never taught as
   background.
@@ -188,7 +216,8 @@ The official script is Python 2 and does not run as is on Python 3.
 [`notebooks/kaggle_train.ipynb`](notebooks/kaggle_train.ipynb) runs the whole
 pipeline on a free Kaggle GPU with the `vafaeii/luna16` dataset attached: build
 the dataset, train YOLOv5s and evaluate per scan. It starts in `QUICK_RUN`
-mode, a short smoke test, before a full run. The model is Ultralytics'
+mode, a short smoke test, before a full run. `INPUT_MODE` chooses the gray or
+the 2.5D input, and `PATIENCE` sets early stopping. The model is Ultralytics'
 YOLOv5s variant with an anchor-free head, so it differs from the thesis, which
 used the original anchor-based YOLOv5s with tuned anchors.
 
@@ -220,7 +249,8 @@ lungnodule build-dataset \
   --patients path/to/lidc_metadata.csv  # optional: stop if a patient leaks
 ```
 
-Add `--max-scans 20` for a quick first run on a free GPU.
+Add `--max-scans 20` for a quick first run on a free GPU, and `--input stack`
+(optionally `--stack-mm 2`) for the [2.5D input](#25d-input-experiment).
 
 ```python
 from lungnodule.annotations import load_annotations, load_candidates
@@ -256,9 +286,11 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] FROC validated numerically against the official example evaluation
 - [x] Results: FROC curve and CPM with a confidence interval, compared with the thesis
 - [x] Sensitivity by nodule size (small nodules are the main weakness)
-- [ ] Early stopping and augmentation study (validation loss rises after epoch ~35)
+- [x] Early stopping in the training notebook
+- [ ] Augmentation study (validation loss rises after epoch ~35)
 - [ ] Eigen-CAM explainability maps
-- [ ] Experiment: stack neighbouring slices as color channels (2.5D input)
+- [x] 2.5D input option: neighbouring slices as color channels
+- [ ] Kaggle runs comparing gray and 2.5D input
 - [ ] All ten LUNA16 folds, to report a cross-validated CPM
 
 ## Data
