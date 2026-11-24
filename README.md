@@ -10,8 +10,8 @@ in CT scans, rebuilt with a stricter, scan-level evaluation.**
 > **Status:** first full training run done. On 88 held-out LUNA16 scans the
 > detector reaches a **CPM of 0.747** (95% CI 0.690–0.801) with false positives
 > counted per scan. See [Results](#results). Next: a run comparing the single-slice
-> input with a [2.5D input](#25d-input-experiment) built for small nodules, then
-> Eigen-CAM.
+> input with a [2.5D input](#25d-input-experiment) built for small nodules, with
+> [Eigen-CAM](#eigen-cam-explanations) maps of its detections.
 
 ## Background
 
@@ -142,6 +142,37 @@ The comparison will be two full Kaggle runs on the same split with early
 stopping, one with `INPUT_MODE = "gray"` and one with `"stack"`, reported with
 CPM intervals and the size breakdown. No result is claimed until then.
 
+### Eigen-CAM explanations
+
+The thesis used Eigen-CAM to show where the detector looks and to filter
+candidates. Eigen-CAM projects a layer's activations onto their first
+principal component, so it needs no gradients and works with a detector.
+`lungnodule.explain` computes it for the layer that feeds the finest detection
+scale (stride 8, a 64 x 64 map for a 512 px slice), the one that matters for
+small nodules.
+
+Looking at maps is not evidence on its own, so each map is also turned into a
+number: the share of the map's weight inside the candidate's box. For the
+highest-scoring candidates of an evaluation, `lungnodule explain` labels each
+one with the LUNA16 hit criterion and reports the median box energy of real
+nodules and of false positives, and the AUC of box energy as a separator. An
+AUC near 0.5 would mean the maps cannot tell the two apart, which would argue
+against using them as a filter.
+
+```bash
+lungnodule explain --luna-root path/to/luna16 --annotations annotations.csv \
+  --excluded annotations_excluded.csv --candidates results/candidates.csv \
+  --dataset dataset --weights best.pt --out results --top 200
+```
+
+It writes `eigencam.csv` (one row per candidate), `eigencam.json` (the
+summary) and `eigencam.png` (maps of the top nodules and false positives).
+Two implementation details are fixed explicitly: the arbitrary sign of the
+principal component is oriented to follow the mean activation, and the
+Ultralytics adapter checks that its hook captures every new image. The Kaggle
+notebook runs it after the evaluation and now also saves the trained weights,
+so the next run's maps can be studied without retraining.
+
 ## What is implemented
 
 - **`lungnodule.froc`**: scan-level FROC curve and CPM (mean sensitivity at
@@ -175,6 +206,10 @@ CPM intervals and the size breakdown. No result is claimed until then.
   scan-level FROC/CPM on whole test scans, writing `candidates.csv` in the
   LUNA16 submission format and `froc.json`, including a bootstrap confidence
   interval for the CPM.
+- **`lungnodule.explain`**, **`lungnodule.explanations`** and the
+  **`lungnodule explain`** command: Eigen-CAM maps for a trained detector and
+  the box energy of the top candidates, compared between nodules and false
+  positives.
 
 ### Matching the official LUNA16 evaluation
 
@@ -288,7 +323,8 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Sensitivity by nodule size (small nodules are the main weakness)
 - [x] Early stopping in the training notebook
 - [ ] Augmentation study (validation loss rises after epoch ~35)
-- [ ] Eigen-CAM explainability maps
+- [x] Eigen-CAM maps with a box-energy check of nodules against false positives
+- [ ] Eigen-CAM results from the next Kaggle run
 - [x] 2.5D input option: neighbouring slices as color channels
 - [ ] Kaggle runs comparing gray and 2.5D input
 - [ ] All ten LUNA16 folds, to report a cross-validated CPM
