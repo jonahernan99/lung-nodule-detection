@@ -221,3 +221,60 @@ def test_score_with_a_missing_file_is_an_error(tmp_path, capsys):
     code = main(["score", "--candidates", missing, "--annotations", str(annotations)])
     assert code == EXIT_ERROR
     assert "error:" in capsys.readouterr().err
+
+
+def test_explain_reports_box_energy_with_the_dataset_input(
+    mini_luna, tmp_path, capsys, monkeypatch
+):
+    import numpy as np
+
+    from lungnodule import explain as explain_module
+
+    root, annotations = mini_luna
+    dataset = tmp_path / "ds"
+    assert main([*args(root, annotations, dataset, "--negatives", "1"), "--input", "stack"]) == 0
+    candidates = tmp_path / "candidates.csv"
+    candidates.write_text(
+        "seriesuid,coordX,coordY,coordZ,probability\n"
+        "scan-c,22.4,22.4,15.0,0.9\n"
+        "scan-c,4.2,4.2,15.0,0.8\n",
+        encoding="utf-8",
+    )
+    shapes = []
+
+    def fake_explainer(weights, **options):
+        def explain(image):
+            shapes.append(image.shape)
+            cam = np.zeros(image.shape[:2])
+            cam[28:37, 28:37] = 1.0  # around scan-c's nodule at pixel (32, 32)
+            return [], cam
+
+        return explain
+
+    monkeypatch.setattr(explain_module, "ultralytics_explainer", fake_explainer)
+    capsys.readouterr()
+    code = main(
+        [
+            "explain",
+            "--luna-root",
+            str(root),
+            "--annotations",
+            str(annotations),
+            "--candidates",
+            str(candidates),
+            "--dataset",
+            str(dataset),
+            "--weights",
+            "best.pt",
+            "--out",
+            str(tmp_path / "cam"),
+            "--top",
+            "5",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == EXIT_OK
+    assert set(shapes) == {(64, 64, 3)}
+    assert "nodule" in out and "false positive" in out
+    assert "AUC 1.000" in out
+    assert (tmp_path / "cam" / "eigencam.csv").exists()

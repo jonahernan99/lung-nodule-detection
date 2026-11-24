@@ -1,4 +1,4 @@
-"""Command-line interface: ``build-dataset``, ``evaluate``, ``score`` and ``breakdown``."""
+"""Command-line interface: build-dataset, evaluate, score, breakdown and explain."""
 
 from __future__ import annotations
 
@@ -9,11 +9,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lungnodule import explain as explain_module
 from lungnodule import inference
 from lungnodule.annotations import load_annotations, load_candidates
 from lungnodule.breakdown import sensitivity_by_size
 from lungnodule.dataset import build_dataset, load_input_config
 from lungnodule.evaluation import evaluate_split
+from lungnodule.explanations import explain_candidates
 from lungnodule.folds import check_patient_leaks, find_scans, load_patient_ids, split_by_subset
 from lungnodule.froc import FP_RATES, bootstrap_cpm, compute_froc
 from lungnodule.preprocess import DEFAULT_STACK_MM, INPUT_MODES, InputConfig
@@ -122,6 +124,34 @@ def build_parser() -> argparse.ArgumentParser:
         default=[0.125, 1.0, 8.0],
         help="False positives per scan at which to report (default: 0.125 1 8)",
     )
+
+    explain = commands.add_parser(
+        "explain", help="Eigen-CAM maps and box energy for the top candidates of an evaluation"
+    )
+    explain.add_argument("--luna-root", type=Path, required=True, help="Folder with subset0..9")
+    explain.add_argument("--annotations", type=Path, required=True, help="LUNA16 annotations.csv")
+    explain.add_argument("--excluded", type=Path, help="LUNA16 annotations_excluded.csv")
+    explain.add_argument(
+        "--candidates", type=Path, required=True, help="candidates.csv from evaluate"
+    )
+    explain.add_argument(
+        "--dataset",
+        type=Path,
+        help="Dataset folder from build-dataset, to reuse its input mode (default: gray)",
+    )
+    explain.add_argument("--weights", type=Path, required=True, help="Trained YOLO weights (.pt)")
+    explain.add_argument("--out", type=Path, required=True, help="Folder for the reports")
+    explain.add_argument(
+        "--top", type=_positive_int, default=200, help="Candidates to explain (default: 200)"
+    )
+    explain.add_argument(
+        "--scale",
+        choices=explain_module.SCALES,
+        default="p3",
+        help="Detection scale whose input layer is explained (default: p3, the finest)",
+    )
+    explain.add_argument("--confidence", type=float, default=0.01)
+    explain.add_argument("--image-size", type=_positive_int, default=512)
     return parser
 
 
@@ -273,6 +303,35 @@ def _run_breakdown(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _run_explain(args: argparse.Namespace) -> int:
+    input_config = load_input_config(args.dataset) if args.dataset else InputConfig()
+    explainer = explain_module.ultralytics_explainer(
+        str(args.weights),
+        scale=args.scale,
+        confidence=args.confidence,
+        image_size=args.image_size,
+    )
+    summary = explain_candidates(
+        args.luna_root,
+        args.annotations,
+        args.candidates,
+        explainer,
+        args.out,
+        excluded_csv=args.excluded,
+        input_config=input_config,
+        top=args.top,
+        progress=lambda done, total: print(f"\r{done}/{total} candidates", end="", flush=True),
+    )
+    print()
+    for label, values in summary["by_label"].items():
+        print(f"{label:<15} {values['count']:>4}  median box energy {values['median_energy']:.3f}")
+    auc = summary["energy_auc"]
+    if auc is not None:
+        print(f"Box energy separates nodules from false positives with AUC {auc:.3f}")
+    print(f"Reports in {args.out}")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
@@ -280,6 +339,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "evaluate": _run_evaluate,
         "score": _run_score,
         "breakdown": _run_breakdown,
+        "explain": _run_explain,
     }
     try:
         return handlers[args.command](args)
