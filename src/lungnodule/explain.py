@@ -22,6 +22,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from lungnodule.inference import Box, to_model_input
+
 #: Overlay color (categorical orange), blended into the slice where the map is high.
 OVERLAY_COLOR = (235, 104, 52)
 
@@ -100,3 +102,55 @@ def overlay(image: np.ndarray, cam: np.ndarray, *, alpha: float = 0.6) -> np.nda
     base = np.repeat(gray[:, :, None].astype(np.float64), 3, axis=2)
     blended = base * (1 - weight) + np.asarray(OVERLAY_COLOR, dtype=np.float64) * weight
     return np.clip(np.round(blended), 0, 255).astype(np.uint8)
+
+
+#: Detection scales of an Ultralytics head, finest first. P3 (stride 8) gives a
+#: 64 x 64 map for a 512 px slice, fine enough for nodules a few pixels wide.
+SCALES: tuple[str, ...] = ("p3", "p4", "p5")
+
+
+def ultralytics_explainer(
+    weights: str,
+    *,
+    scale: str = "p3",
+    confidence: float = 0.01,
+    image_size: int = 512,
+    device: str | None = None,
+):
+    """Return ``explain(image) -> (boxes, cam)`` for trained Ultralytics YOLO weights.
+
+    ``image`` is a square slice image from ``slice_image``. ``boxes`` are
+    ``(x_center, y_center, width, height, confidence)`` in pixels, as from the
+    detector, and ``cam`` is the Eigen-CAM map of the layer that feeds the
+    chosen detection scale, resized to the image.
+    """
+    if scale not in SCALES:
+        raise ValueError(f"Unknown scale {scale!r}; choose from {SCALES}")
+    try:
+        from ultralytics import YOLO
+    except ImportError as exc:  # pragma: no cover - depends on optional extra
+        raise ImportError(
+            "Explaining a trained model requires: pip install 'lung-nodule-detection[train]'"
+        ) from exc
+
+    model = YOLO(weights)
+    network = model.model.model
+    layer = network[network[-1].f[SCALES.index(scale)]]
+    captured: dict[str, object] = {}
+    layer.register_forward_hook(lambda module, inputs, output: captured.update(output=output))
+
+    def explain(image: np.ndarray) -> tuple[list[Box], np.ndarray]:
+        height, width = image.shape[:2]
+        if height != width:
+            raise ValueError(f"Expected a square slice, got {height} x {width}")
+        (result,) = model.predict(
+            [to_model_input(image)], conf=confidence, imgsz=image_size, device=device, verbose=False
+        )
+        activations = captured["output"][0].detach().float().cpu().numpy()
+        cam = resize_map(eigen_cam(activations), (height, width))
+        xywh = result.boxes.xywh.cpu().numpy()
+        conf = result.boxes.conf.cpu().numpy()
+        boxes = [(*map(float, box), float(c)) for box, c in zip(xywh, conf, strict=True)]
+        return boxes, cam
+
+    return explain
