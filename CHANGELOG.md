@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-11-24
+
+### Added
+
+- `lungnodule.explain`: Eigen-CAM maps (`eigen_cam`), with the principal
+  component's sign oriented to follow the mean activation; `box_energy`, the
+  share of a map inside a box; `overlay`; and `ultralytics_explainer`, which
+  hooks the layer feeding a chosen detection scale (P3 by default).
+- `lungnodule explain` and `lungnodule.explanations.explain_candidates`: for
+  the top candidates of an evaluation, label each with the LUNA16 hit
+  criterion, measure its box energy on its center slice and report the median
+  energy per label and the AUC of energy for nodules against false positives
+  (`eigencam.csv`, `eigencam.json`, `eigencam.png`).
+- Kaggle notebook: an Eigen-CAM section after the evaluation, and the trained
+  `best.pt` in the results archive.
+
 ## [0.7.0] - 2026-11-22
 
 ### Added
@@ -130,6 +146,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.8.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.4.0...v0.5.0
