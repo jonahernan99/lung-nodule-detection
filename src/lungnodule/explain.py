@@ -19,10 +19,14 @@ Two details are fixed here that implementations often leave open:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 
+from lungnodule.annotations import Candidate, Nodule
+from lungnodule.geometry import world_to_voxel
 from lungnodule.inference import Box, to_model_input
+from lungnodule.preprocess import CTScan, InputConfig, slice_image
 
 #: Overlay color (categorical orange), blended into the slice where the map is high.
 OVERLAY_COLOR = (235, 104, 52)
@@ -154,3 +158,104 @@ def ultralytics_explainer(
         return boxes, cam
 
     return explain
+
+
+# ---------------------------------------------------------------- candidates
+
+#: Box used when no detection on the candidate's slice is close to its center.
+FALLBACK_BOX_PX = 16.0
+
+
+@dataclass(frozen=True)
+class CandidateExplanation:
+    """Eigen-CAM evidence for one 3D candidate, measured on its center slice."""
+
+    series_uid: str
+    probability: float
+    label: str
+    """``nodule``, ``false positive`` or ``excluded``, with the LUNA16 hit criterion."""
+    z: int
+    x: float
+    y: float
+    box: tuple[float, float, float, float]
+    box_source: str
+    """``detection`` when a box on the slice matches the candidate, else ``fixed``."""
+    energy: float
+
+
+def label_candidate(
+    candidate: Candidate, nodules: Sequence[Nodule], excluded: Sequence[Nodule] = ()
+) -> str:
+    """Label a candidate as the FROC analysis does: hit, excluded finding or false positive."""
+    if any(nodule.contains(candidate.center) for nodule in nodules):
+        return "nodule"
+    if any(finding.contains(candidate.center) for finding in excluded):
+        return "excluded"
+    return "false positive"
+
+
+def explain_candidate(
+    scan: CTScan,
+    candidate: Candidate,
+    explain,
+    *,
+    label: str,
+    config: InputConfig | None = None,
+) -> tuple[CandidateExplanation, np.ndarray, np.ndarray]:
+    """Run ``explain`` on the candidate's center slice; return the result, image and map.
+
+    The energy is measured in the slice detection closest to the candidate's
+    center, if one lies within its own size of it, and otherwise in a
+    ``FALLBACK_BOX_PX`` box around the center.
+    """
+    x, y, z = world_to_voxel(candidate.center, scan.origin, scan.spacing, scan.direction)
+    z_index = int(np.clip(round(float(z)), 0, scan.hu.shape[0] - 1))
+    image = slice_image(scan, z_index, config)
+    boxes, cam = explain(image)
+    px, py = float(x) + 0.5, float(y) + 0.5  # voxel index i is the center of pixel [i, i + 1)
+
+    def distance(box: Box) -> float:
+        return float(np.hypot(box[0] - px, box[1] - py))
+
+    near = [box for box in boxes if distance(box) <= max(box[2], box[3])]
+    if near:
+        best = min(near, key=distance)
+        box, source = (best[0], best[1], best[2], best[3]), "detection"
+    else:
+        box, source = (px, py, FALLBACK_BOX_PX, FALLBACK_BOX_PX), "fixed"
+    result = CandidateExplanation(
+        series_uid=candidate.series_uid,
+        probability=candidate.probability,
+        label=label,
+        z=z_index,
+        x=px,
+        y=py,
+        box=tuple(float(v) for v in box),
+        box_source=source,
+        energy=box_energy(cam, box),
+    )
+    return result, image, cam
+
+
+def energy_summary(explanations: Sequence[CandidateExplanation]) -> dict:
+    """Counts and median energy per label, and how well energy separates nodules from FPs.
+
+    ``auc`` is the probability that a random nodule candidate has more energy
+    in its box than a random false positive (0.5 means no separation).
+    """
+    by_label: dict[str, list[float]] = {}
+    for item in explanations:
+        by_label.setdefault(item.label, []).append(item.energy)
+    hits, false = by_label.get("nodule", []), by_label.get("false positive", [])
+    auc = None
+    if hits and false:
+        wins = sum((h > f) + 0.5 * (h == f) for h in hits for f in false)
+        auc = wins / (len(hits) * len(false))
+    return {
+        "candidates": len(explanations),
+        "by_label": {
+            label: {"count": len(values), "median_energy": float(np.median(values))}
+            for label, values in sorted(by_label.items())
+        },
+        "energy_auc": auc,
+    }
