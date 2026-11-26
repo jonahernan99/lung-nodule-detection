@@ -7,11 +7,12 @@
 **An independent reimplementation of my B.Eng. thesis on detecting lung nodules
 in CT scans, rebuilt with a stricter, scan-level evaluation.**
 
-> **Status:** first full training run done. On 88 held-out LUNA16 scans the
-> detector reaches a **CPM of 0.747** (95% CI 0.690–0.801) with false positives
-> counted per scan. See [Results](#results). Next: a run comparing the single-slice
-> input with a [2.5D input](#25d-input-experiment) built for small nodules, with
-> [Eigen-CAM](#eigen-cam-explanations) maps of its detections.
+> **Status:** two full training runs done. With a [2.5D input](#25d-input-experiment)
+> that stacks neighbouring slices, the detector reaches a **CPM of 0.861**
+> (95% CI 0.802–0.920) on 88 held-out LUNA16 scans with false positives counted
+> per scan, up from 0.747 with single slices (paired difference +0.114, 95% CI
+> +0.060 to +0.176). See [Results](#results). Next: a single-slice run with the
+> same early stopping as a clean control.
 
 ## Background
 
@@ -41,52 +42,64 @@ reported side by side with their evaluation protocols.
 
 ## Results
 
-First full run on a free Kaggle GPU with
-[`notebooks/kaggle_train.ipynb`](notebooks/kaggle_train.ipynb) (v0.4.0): trained
-on LUNA16 subsets 0–7, model selection on subset 8, tested once on subset 9
-(88 scans, 105 nodules). Ultralytics YOLOv5s (`yolov5su`, anchor-free head),
-512 px slices, 100 epochs, evaluated with the best validation checkpoint.
+Two full runs on a free Kaggle GPU with
+[`notebooks/kaggle_train.ipynb`](notebooks/kaggle_train.ipynb), on the same
+split: trained on LUNA16 subsets 0–7, model selection on subset 8, tested on
+subset 9 (88 scans, 105 nodules). Both use Ultralytics YOLOv5s (`yolov5su`,
+anchor-free head) on 512 px slices and are evaluated with the best validation
+checkpoint.
 
-| FP per scan | 0.125 | 0.25 | 0.5 | 1 | 2 | 4 | 8 | **CPM** |
+| Input (sensitivity at FP per scan) | 0.125 | 0.25 | 0.5 | 1 | 2 | 4 | 8 | **CPM** (95% CI) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Sensitivity | 0.486 | 0.590 | 0.724 | 0.800 | 0.867 | 0.876 | 0.886 | **0.747** |
+| Single slice (v0.4.0, 100 epochs) | 0.486 | 0.590 | 0.724 | 0.800 | 0.867 | 0.876 | 0.886 | 0.747 (0.690–0.801) |
+| 2.5D stack (v0.8.0, early stopping) | 0.714 | 0.781 | 0.838 | 0.876 | 0.933 | 0.943 | 0.943 | **0.861** (0.802–0.920) |
 
-- **95% confidence interval for the CPM: 0.690–0.801**, from 1,000 bootstrap
-  resamples of the test scans (`lungnodule.froc.bootstrap_cpm`). One fold of
-  88 scans leaves this much uncertainty, so the interval is reported with the
-  CPM.
-- At one false positive per scan, the detector finds 80% of the nodules. 101 of
-  the 105 nodules are found at some confidence; 4 are never detected.
-- **Checked independently:** re-scoring the run's 6,311 candidates offline with
-  `compute_froc` and with the port of the official LUNA16 algorithm gives the
-  same seven sensitivities. Numbers and settings are in
-  [`results/luna16-subset9/summary.json`](results/luna16-subset9/summary.json),
-  and the candidates in
-  [`results/luna16-subset9/candidates.csv`](results/luna16-subset9/candidates.csv),
-  so anyone can re-score them with the official script or with
-  `lungnodule score` (see [Score a candidates file](#score-a-candidates-file)).
+- **The 2.5D input raises the CPM by 0.114**, with a paired 95% confidence
+  interval of +0.060 to +0.176 (`lungnodule compare`, 1,000 resamples of the
+  same 88 scans). The 2.5D run scored higher in every draw, and 10,000 draws
+  give the same interval. The two separate intervals almost touch, which
+  understates the evidence: a paired comparison removes the variation that
+  comes from which scans are in the test set.
+- The gain is largest where few false positives are allowed: at 1/8 per scan,
+  sensitivity goes from 0.486 to 0.714. Both runs find 101 of the 105 nodules at
+  some confidence; the 2.5D run ranks them above its false positives more often.
+- **Caveats.** Each input was trained once. The 2.5D run also stopped early
+  (epoch 81, best epoch 61) where the first run trained 100 epochs; early
+  stopping can only shorten training and both runs evaluate their best
+  validation checkpoint, so it is an unlikely source of the gain, but a
+  single-slice run with the same settings is the clean control. The 2.5D input
+  was chosen from the size analysis below before the second run, not by
+  comparing several models on the test set.
+- **Checked independently:** both runs' candidates were re-scored offline with
+  `compute_froc` and with the port of the official LUNA16 algorithm, giving the
+  same seven sensitivities as Kaggle. Numbers, settings and candidates are in
+  [`results/luna16-subset9/`](results/luna16-subset9/) (single slice) and
+  [`results/luna16-subset9-stack/`](results/luna16-subset9-stack/) (2.5D), so
+  anyone can re-score them with the official script or with `lungnodule score`
+  (see [Score a candidates file](#score-a-candidates-file)).
 
-![Scan-level FROC curve on 88 test scans, CPM 0.747](results/luna16-subset9/froc.png)
+![Scan-level FROC curve of the 2.5D run on 88 test scans, CPM 0.861](results/luna16-subset9-stack/froc.png)
 
 ### Detection by nodule size
 
 The CPM averages over every nodule. Broken down by size
-([`by_size.json`](results/luna16-subset9/by_size.json)), the weak spot is clear:
+([single slice](results/luna16-subset9/by_size.json),
+[2.5D](results/luna16-subset9-stack/by_size.json)), the first run's weak spot
+was clear, and it is where the 2.5D input helped most:
 
-| Nodule size | Nodules | Found at 1/8 FP per scan | Found at 1 FP per scan | Found at 8 FP per scan |
-| --- | ---: | ---: | ---: | ---: |
-| Under 6 mm | 45 | 16 (36%) | 31 (69%) | 38 (84%) |
-| 6–10 mm | 34 | 18 (53%) | 29 (85%) | 31 (91%) |
-| 10–20 mm | 20 | 11 (55%) | 18 (90%) | 18 (90%) |
-| 20 mm or more | 6 | 6 (100%) | 6 (100%) | 6 (100%) |
+| Nodule size | Nodules | 1/8 FP per scan: single slice | 1/8 FP: 2.5D | 1 FP per scan: single slice | 1 FP: 2.5D |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Under 6 mm | 45 | 16 (36%) | **25 (56%)** | 31 (69%) | **36 (80%)** |
+| 6–10 mm | 34 | 18 (53%) | **24 (71%)** | 29 (85%) | 30 (88%) |
+| 10–20 mm | 20 | 11 (55%) | **20 (100%)** | 18 (90%) | **20 (100%)** |
+| 20 mm or more | 6 | 6 (100%) | 6 (100%) | 6 (100%) | 6 (100%) |
 
-Small nodules are 43% of the test set and account for most of the misses: at
-one false positive per scan, 14 of the 21 missed nodules are under 6 mm. On a
-512 px slice such a nodule spans only a few pixels, and it appears on few
-slices, so a 2D detector has little to go on. Larger inputs or a 2.5D input that stacks
-neighbouring slices are the natural experiments to target it; the
-[2.5D input](#25d-input-experiment) is implemented and awaiting a run. The groups above
-6 mm are small (6 to 34 nodules), so their percentages are rough.
+Small nodules are 43% of the test set. With single slices they accounted for
+most of the misses: at one false positive per scan, 14 of the 21 missed nodules
+were under 6 mm. On a 512 px slice such a nodule spans only a few pixels and
+appears on few slices, so a 2D detector has little to go on. With the 2.5D
+input the misses at that rate fall to 13, of which 9 are under 6 mm. The groups
+above 6 mm are small (6 to 34 nodules), so their percentages are rough.
 
 ### Compared with the thesis
 
@@ -95,13 +108,14 @@ neighbouring slices are the natural experiments to target it; the
 | Data split | Mostly by 2D slice (LIDC-IDRI) | By scan: LUNA16 subset 9 held out |
 | False positives counted | Per slice | Per scan |
 | Model | YOLOv5s, anchor-based, tuned anchors | YOLOv5s, Ultralytics anchor-free head |
-| CPM | 88.0% | **74.7%** (95% CI 69.0–80.1%) |
+| CPM | 88.0% | **86.1%** with the 2.5D input (95% CI 80.2–92.0%); 74.7% with single slices |
 
 The two numbers are not directly comparable, and the drop is expected. A scan
 has around 200 slices, so "1 false positive per slice" allows about 200 per
 scan; here it allows one. The held-out scans also share no slices with
-training. The 74.7% is the honest estimate of how this 2D approach performs on
-unseen scans. (This run split by scan without the optional patient check;
+training. The 74.7% is the honest estimate of how the single-slice approach
+performs on unseen scans; the 2.5D input brings the stricter, per-scan figure
+to 86.1%. (This run split by scan without the optional patient check;
 LIDC-IDRI has a few patients with more than one scan.) It is still well below
 leading LUNA16 systems, which use 3D context and report averages over all ten
 folds.
@@ -115,7 +129,9 @@ around epochs 25–45 and then rise, while validation mAP peaks near epoch 35 an
 slowly declines: the model starts to overfit. Because `best.pt` keeps the best
 validation epoch, the evaluated model is not the overfit final one, but the
 second half of training spent GPU time without improving it. The notebook now
-stops training 20 epochs after the best validation fitness (`PATIENCE`).
+stops training 20 epochs after the best validation fitness (`PATIENCE`): the
+2.5D run stopped at epoch 81, with its best epoch at 61
+([curves](results/luna16-subset9-stack/training_curves.png)).
 
 ### 2.5D input (experiment)
 
@@ -138,9 +154,11 @@ context without any change to its architecture.
 - Hue and saturation augmentation would mix the channels, so the notebook turns
   them off in `stack` mode.
 
-The comparison will be two full Kaggle runs on the same split with early
-stopping, one with `INPUT_MODE = "gray"` and one with `"stack"`, reported with
-CPM intervals and the size breakdown. No result is claimed until then.
+**Result:** CPM 0.861 against 0.747 with single slices on the same 88 test
+scans, a paired difference of +0.114 (95% CI +0.060 to +0.176), with the
+largest gains on small nodules and at low false-positive rates (see
+[Results](#results)). A single-slice run with the same early stopping is the
+remaining control.
 
 ### Eigen-CAM explanations
 
@@ -169,9 +187,22 @@ It writes `eigencam.csv` (one row per candidate), `eigencam.json` (the
 summary) and `eigencam.png` (maps of the top nodules and false positives).
 Two implementation details are fixed explicitly: the arbitrary sign of the
 principal component is oriented to follow the mean activation, and the
-Ultralytics adapter checks that its hook captures every new image. The Kaggle
-notebook runs it after the evaluation and now also saves the trained weights,
-so the next run's maps can be studied without retraining.
+Ultralytics adapter checks that its hook captures every new image.
+
+**Result on the 2.5D run** ([`eigencam.json`](results/luna16-subset9-stack/eigencam.json)):
+among the top 200 candidates, 85 are nodules, 29 false positives and 86 lie on
+excluded findings. The map is exactly zero inside 50 of the 85 nodule boxes,
+even for detections with confidence near 0.9, and box energy does not separate
+nodules from false positives (AUC 0.42). The example maps show why: the first
+principal component of this layer follows large structures such as the body
+outline and lung borders, not the detected objects. In this setup, Eigen-CAM
+cannot filter candidates. That is a result about this configuration (first
+component, finest scale, sign following the mean activation), not about
+saliency maps in general. A per-candidate map computed on a crop around each
+detection is the natural next test; it needs the scans, so it would run on
+Kaggle.
+
+![Eigen-CAM maps for the top nodules and false positives of the 2.5D run](results/luna16-subset9-stack/eigencam.png)
 
 ## What is implemented
 
@@ -202,6 +233,9 @@ so the next run's maps can be studied without retraining.
 - **`lungnodule.breakdown`** and the **`lungnodule score`** and
   **`lungnodule breakdown`** commands: score any candidates file and report
   detected nodules by size at chosen false-positive rates.
+- **`lungnodule.froc.compare_cpm`** and the **`lungnodule compare`** command:
+  a paired bootstrap of the CPM difference between two models evaluated on the
+  same scans.
 - **`lungnodule.evaluation`** and the **`lungnodule evaluate`** command:
   scan-level FROC/CPM on whole test scans, writing `candidates.csv` in the
   LUNA16 submission format and `froc.json`, including a bootstrap confidence
@@ -267,10 +301,15 @@ lungnodule score --candidates results/luna16-subset9/candidates.csv \
 lungnodule breakdown --candidates results/luna16-subset9/candidates.csv \
   --annotations annotations.csv --excluded annotations_excluded.csv \
   --scans results/luna16-subset9/test_scans.txt --fp-rate 0.125 1 8 --out by_size.json
+lungnodule compare --baseline results/luna16-subset9/candidates.csv \
+  --candidates results/luna16-subset9-stack/candidates.csv \
+  --annotations annotations.csv --excluded annotations_excluded.csv \
+  --scans results/luna16-subset9/test_scans.txt     # +0.114 (paired 95% CI +0.060 to +0.176)
 ```
 
 `--scans` lists every evaluated scan, so scans without any candidate still
-count towards false positives per scan.
+count towards false positives per scan. `compare` scores two models on the
+same scans with a paired bootstrap.
 
 ### Build the training data
 
@@ -324,9 +363,11 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [x] Early stopping in the training notebook
 - [ ] Augmentation study (validation loss rises after epoch ~35)
 - [x] Eigen-CAM maps with a box-energy check of nodules against false positives
-- [ ] Eigen-CAM results from the next Kaggle run
+- [x] Eigen-CAM results from the 2.5D run (no separation in this setup)
+- [ ] Per-candidate Eigen-CAM on crops around each detection
 - [x] 2.5D input option: neighbouring slices as color channels
-- [ ] Kaggle runs comparing gray and 2.5D input
+- [x] Kaggle run with the 2.5D input, compared with the single-slice run
+- [ ] Single-slice control run with the same early stopping
 - [ ] All ten LUNA16 folds, to report a cross-validated CPM
 
 ## Data
