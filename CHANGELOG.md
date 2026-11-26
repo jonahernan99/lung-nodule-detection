@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-11-26
+
+### Added
+
+- `lungnodule.froc.compare_cpm` and `lungnodule compare`: paired bootstrap of
+  the CPM difference between two candidate sets on the same scans.
+- `results/luna16-subset9-stack/`: the full Kaggle run with the 2.5D input and
+  early stopping. CPM 0.861 (95% CI 0.802-0.920) on the 88 subset 9 scans,
+  against 0.747 with single slices; paired difference +0.114 (95% CI +0.060 to
+  +0.176). At 1 false positive per scan, 80% of nodules under 6 mm are found,
+  up from 69%.
+- The run's Eigen-CAM report: box energy does not separate nodules from false
+  positives in this setup (AUC 0.42); the maps follow large anatomical
+  structures.
+
+### Changed
+
+- `bootstrap_cpm` shares its resampling code with `compare_cpm`; intervals are
+  unchanged (the single-slice run still gives 0.690-0.801).
+
 ## [0.8.0] - 2026-11-24
 
 ### Added
@@ -146,6 +166,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.9.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.5.0...v0.6.0
