@@ -81,6 +81,22 @@ def _match_scan(
 
 
 @dataclass(frozen=True)
+class CpmDifference:
+    """Paired bootstrap comparison of two candidate sets on the same scans."""
+
+    cpm_baseline: float
+    cpm_candidate: float
+    difference: float
+    """``cpm_candidate - cpm_baseline``."""
+    lower: float
+    upper: float
+    confidence: float
+    samples: int
+    share_not_better: float
+    """Share of bootstrap draws in which the candidate set's CPM is not above the baseline's."""
+
+
+@dataclass(frozen=True)
 class CpmInterval:
     """CPM with a percentile bootstrap confidence interval over scans."""
 
@@ -215,11 +231,30 @@ def bootstrap_cpm(
     hundred nodules gives a wide interval, which should be reported with the CPM.
     Draws that contain no annotated nodule are redrawn.
     """
+    _check_bootstrap(samples, confidence)
+    cpm_of = _cpm_function(candidates, nodules_by_scan, scan_ids, excluded_by_scan, fp_rates)
+    draws = _draws(cpm_of.has_nodules, samples, seed)
+    values = [cpm_of(draw) for draw in draws]
+    alpha = (1 - confidence) / 2
+    lower, upper = np.quantile(values, [alpha, 1 - alpha])
+    return CpmInterval(
+        cpm=cpm_of(range(len(cpm_of.has_nodules))),
+        lower=float(lower),
+        upper=float(upper),
+        confidence=confidence,
+        samples=samples,
+    )
+
+
+def _check_bootstrap(samples: int, confidence: float) -> None:
     if samples < 1:
         raise ValueError("samples must be at least 1")
     if not 0 < confidence < 1:
         raise ValueError("confidence must be between 0 and 1")
 
+
+def _cpm_function(candidates, nodules_by_scan, scan_ids, excluded_by_scan, fp_rates):
+    """``cpm_of(indices)``: the CPM of a multiset of scans, by position in sorted scan order."""
     matches = list(_match_all(candidates, nodules_by_scan, scan_ids, excluded_by_scan).values())
     if not any(match.best for match in matches):
         raise ValueError("No annotated nodules in the evaluated scans")
@@ -232,18 +267,58 @@ def bootstrap_cpm(
         _, _, sensitivities = _curve(nodules, fps, len(indices), fp_rates, interpolate=True)
         return float(np.mean(sensitivities))
 
+    cpm_of.has_nodules = [len(b) > 0 for b in best]
+    return cpm_of
+
+
+def _draws(has_nodules: Sequence[bool], samples: int, seed: int) -> list[np.ndarray]:
+    """Resamples of scan positions with replacement; draws without any nodule are redrawn."""
     rng = np.random.default_rng(seed)
-    values = []
-    while len(values) < samples:
-        draw = rng.integers(0, len(matches), size=len(matches))
-        if any(len(best[i]) for i in draw):
-            values.append(cpm_of(draw))
+    draws = []
+    while len(draws) < samples:
+        draw = rng.integers(0, len(has_nodules), size=len(has_nodules))
+        if any(has_nodules[i] for i in draw):
+            draws.append(draw)
+    return draws
+
+
+def compare_cpm(
+    baseline: Iterable[Candidate],
+    candidate: Iterable[Candidate],
+    nodules_by_scan: Mapping[str, Sequence[Nodule]],
+    *,
+    scan_ids: Iterable[str],
+    excluded_by_scan: Mapping[str, Sequence[Nodule]] | None = None,
+    fp_rates: Sequence[float] = FP_RATES,
+    samples: int = 1000,
+    confidence: float = 0.95,
+    seed: int = 0,
+) -> CpmDifference:
+    """Compare two models evaluated on the same scans with a paired bootstrap.
+
+    Each draw resamples the scans once and scores both candidate sets on that
+    same resample, so the variation that comes from which scans happen to be
+    in the test set cancels out. Two separate intervals that overlap can still
+    hide a clear paired difference, and the reverse. ``scan_ids`` is required:
+    both sets must be scored on exactly the same scans.
+    """
+    _check_bootstrap(samples, confidence)
+    scans = sorted(set(scan_ids))
+    cpm_a = _cpm_function(baseline, nodules_by_scan, scans, excluded_by_scan, fp_rates)
+    cpm_b = _cpm_function(candidate, nodules_by_scan, scans, excluded_by_scan, fp_rates)
+    differences = np.array(
+        [cpm_b(draw) - cpm_a(draw) for draw in _draws(cpm_a.has_nodules, samples, seed)]
+    )
     alpha = (1 - confidence) / 2
-    lower, upper = np.quantile(values, [alpha, 1 - alpha])
-    return CpmInterval(
-        cpm=cpm_of(range(len(matches))),
+    lower, upper = np.quantile(differences, [alpha, 1 - alpha])
+    everything = range(len(scans))
+    return CpmDifference(
+        cpm_baseline=cpm_a(everything),
+        cpm_candidate=cpm_b(everything),
+        difference=cpm_b(everything) - cpm_a(everything),
         lower=float(lower),
         upper=float(upper),
         confidence=confidence,
         samples=samples,
+        share_not_better=float(np.mean(differences <= 0)),
     )
