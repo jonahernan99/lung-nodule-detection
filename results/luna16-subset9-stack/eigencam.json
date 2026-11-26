@@ -1,0 +1,27 @@
+{
+  "top": 200,
+  "candidates": 200,
+  "by_label": {
+    "excluded": {
+      "count": 86,
+      "median_energy": 0.0
+    },
+    "false positive": {
+      "count": 29,
+      "median_energy": 2.7746128496329992e-05
+    },
+    "nodule": {
+      "count": 85,
+      "median_energy": 2.474157996211334e-07
+    }
+  },
+  "energy_auc": 0.42210953346855984,
+  "input": {
+    "mode": "stack",
+    "stack_mm": 2.0,
+    "window": [
+      -600.0,
+      1500.0
+    ]
+  }
+}

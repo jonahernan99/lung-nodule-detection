@@ -1,0 +1,10 @@
+{
+  "cpm_baseline": 0.7469387755102039,
+  "cpm_candidate": 0.8612244897959185,
+  "difference": 0.11428571428571455,
+  "lower": 0.060058328299607354,
+  "upper": 0.17647229623556743,
+  "confidence": 0.95,
+  "samples": 1000,
+  "share_not_better": 0.0
+}

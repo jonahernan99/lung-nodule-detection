@@ -1,0 +1,131 @@
+[
+  {
+    "fp_rate": 0.125,
+    "threshold": 0.73409,
+    "sensitivity": 0.7142857142857143,
+    "rows": [
+      {
+        "size": "under 6 mm",
+        "min_mm": 0.0,
+        "max_mm": 6.0,
+        "nodules": 45,
+        "detected": 25,
+        "sensitivity": 0.5555555555555556,
+        "found_at_any_score": 42
+      },
+      {
+        "size": "6-10 mm",
+        "min_mm": 6.0,
+        "max_mm": 10.0,
+        "nodules": 34,
+        "detected": 24,
+        "sensitivity": 0.7058823529411765,
+        "found_at_any_score": 33
+      },
+      {
+        "size": "10-20 mm",
+        "min_mm": 10.0,
+        "max_mm": 20.0,
+        "nodules": 20,
+        "detected": 20,
+        "sensitivity": 1.0,
+        "found_at_any_score": 20
+      },
+      {
+        "size": "20 mm or more",
+        "min_mm": 20.0,
+        "max_mm": null,
+        "nodules": 6,
+        "detected": 6,
+        "sensitivity": 1.0,
+        "found_at_any_score": 6
+      }
+    ]
+  },
+  {
+    "fp_rate": 1.0,
+    "threshold": 0.374015,
+    "sensitivity": 0.8761904761904762,
+    "rows": [
+      {
+        "size": "under 6 mm",
+        "min_mm": 0.0,
+        "max_mm": 6.0,
+        "nodules": 45,
+        "detected": 36,
+        "sensitivity": 0.8,
+        "found_at_any_score": 42
+      },
+      {
+        "size": "6-10 mm",
+        "min_mm": 6.0,
+        "max_mm": 10.0,
+        "nodules": 34,
+        "detected": 30,
+        "sensitivity": 0.8823529411764706,
+        "found_at_any_score": 33
+      },
+      {
+        "size": "10-20 mm",
+        "min_mm": 10.0,
+        "max_mm": 20.0,
+        "nodules": 20,
+        "detected": 20,
+        "sensitivity": 1.0,
+        "found_at_any_score": 20
+      },
+      {
+        "size": "20 mm or more",
+        "min_mm": 20.0,
+        "max_mm": null,
+        "nodules": 6,
+        "detected": 6,
+        "sensitivity": 1.0,
+        "found_at_any_score": 6
+      }
+    ]
+  },
+  {
+    "fp_rate": 8.0,
+    "threshold": 0.037359,
+    "sensitivity": 0.9428571428571428,
+    "rows": [
+      {
+        "size": "under 6 mm",
+        "min_mm": 0.0,
+        "max_mm": 6.0,
+        "nodules": 45,
+        "detected": 40,
+        "sensitivity": 0.8888888888888888,
+        "found_at_any_score": 42
+      },
+      {
+        "size": "6-10 mm",
+        "min_mm": 6.0,
+        "max_mm": 10.0,
+        "nodules": 34,
+        "detected": 33,
+        "sensitivity": 0.9705882352941176,
+        "found_at_any_score": 33
+      },
+      {
+        "size": "10-20 mm",
+        "min_mm": 10.0,
+        "max_mm": 20.0,
+        "nodules": 20,
+        "detected": 20,
+        "sensitivity": 1.0,
+        "found_at_any_score": 20
+      },
+      {
+        "size": "20 mm or more",
+        "min_mm": 20.0,
+        "max_mm": null,
+        "nodules": 6,
+        "detected": 6,
+        "sensitivity": 1.0,
+        "found_at_any_score": 6
+      }
+    ]
+  }
+]

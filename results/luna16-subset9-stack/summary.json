@@ -1,0 +1,100 @@
+{
+  "description": "Full Kaggle run with the 2.5D (stacked) input and early stopping (lungnodule 0.8.0 notebook, QUICK_RUN = False)",
+  "date": "2026-11-26",
+  "data": {
+    "dataset": "LUNA16 (Kaggle: vafaeii/luna16)",
+    "train_subsets": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "validation_subset": 8,
+    "test_subset": 9
+  },
+  "input": {
+    "mode": "stack",
+    "stack_mm": 2.0,
+    "window": [
+      -600.0,
+      1500.0
+    ]
+  },
+  "model": {
+    "weights": "yolov5su.pt (Ultralytics YOLOv5s with an anchor-free head)",
+    "image_size": 512,
+    "epochs": 100,
+    "patience": 20,
+    "epochs_run": 81,
+    "best_epoch": 61,
+    "batch": 16,
+    "seed": 0,
+    "hsv_h": 0.0,
+    "hsv_s": 0.0,
+    "evaluated_checkpoint": "best.pt (best validation fitness)",
+    "detection_confidence_kept": 0.01
+  },
+  "test": {
+    "scans": 88,
+    "nodules": 105,
+    "candidates": 2222,
+    "found_nodules": 101,
+    "false_positives": 1583,
+    "duplicate_candidates": 1,
+    "excluded_candidates": 537,
+    "fp_rates": [
+      0.125,
+      0.25,
+      0.5,
+      1.0,
+      2.0,
+      4.0,
+      8.0
+    ],
+    "sensitivities": [
+      0.7142857142857143,
+      0.780952380952381,
+      0.8380952380952381,
+      0.8761904761904762,
+      0.9333333333333333,
+      0.9428571428571428,
+      0.9428571428571428
+    ],
+    "cpm": 0.8612244897959185,
+    "cpm_interval": {
+      "lower": 0.8016643550624133,
+      "upper": 0.9204920190363881,
+      "confidence": 0.95,
+      "samples": 1000,
+      "method": "percentile bootstrap over the 88 test scans (lungnodule.froc.bootstrap_cpm, seed 0)"
+    }
+  },
+  "comparison_with_gray_run": {
+    "baseline": "results/luna16-subset9 (gray input, 100 epochs, no early stopping)",
+    "cpm_difference": 0.11428571428571455,
+    "paired_interval": {
+      "lower": 0.060058328299607354,
+      "upper": 0.17647229623556743,
+      "confidence": 0.95,
+      "samples": 1000
+    },
+    "share_of_draws_not_better": 0.0,
+    "method": "paired bootstrap over the same 88 test scans (lungnodule compare, seed 0)",
+    "caveat": "One training run per input. The runs also differ in early stopping; a gray run with the same settings is the clean control."
+  },
+  "verification": "Re-scored offline with lungnodule score and with the Python 3 port of the official LUNA16 algorithm (tests/test_froc_official.py): CPM 0.8612 in both, identical to the Kaggle run.",
+  "files": {
+    "candidates.csv": "The run's 2,222 candidates in the LUNA16 submission format",
+    "froc.png": "Scan-level FROC curve",
+    "training_curves.png": "Ultralytics training and validation curves (81 epochs, early stopping)",
+    "test_scans.txt": "Series UIDs of the 88 test scans (LUNA16 subset 9), for --scans",
+    "by_size.json": "Detected nodules by size at 0.125, 1 and 8 false positives per scan (lungnodule breakdown)",
+    "comparison_with_gray.json": "Paired comparison with the gray run (lungnodule compare)",
+    "eigencam.csv, eigencam.json, eigencam.png": "Eigen-CAM box energy of the top 200 candidates, its summary and example maps (lungnodule explain)"
+  },
+  "reproduce": "lungnodule score --candidates candidates.csv --annotations annotations.csv --excluded annotations_excluded.csv --scans test_scans.txt"
+}
