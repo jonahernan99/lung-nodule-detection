@@ -278,3 +278,37 @@ def test_explain_reports_box_energy_with_the_dataset_input(
     assert "nodule" in out and "false positive" in out
     assert "AUC 1.000" in out
     assert (tmp_path / "cam" / "eigencam.csv").exists()
+
+
+def test_compare_reports_a_paired_difference(tmp_path, capsys):
+    annotations, candidates = write_scored_files(tmp_path)
+    better = tmp_path / "better.csv"
+    better.write_text(
+        candidates.read_text(encoding="utf-8") + "scan-a,100.5,0,0,0.95\n", encoding="utf-8"
+    )
+    scans = tmp_path / "scans.txt"
+    scans.write_text("seriesuid\nscan-a\nscan-b\n", encoding="utf-8")
+    out = tmp_path / "compare.json"
+    code = main(
+        [
+            "compare",
+            "--baseline",
+            str(candidates),
+            "--candidates",
+            str(better),
+            "--annotations",
+            str(annotations),
+            "--scans",
+            str(scans),
+            "--samples",
+            "200",
+            "--out",
+            str(out),
+        ]
+    )
+    text = capsys.readouterr().out
+    assert code == EXIT_OK
+    assert "Scans: 2, nodules: 3" in text
+    assert "Difference: +" in text and "paired 95% CI" in text
+    saved = json.loads(out.read_text(encoding="utf-8"))
+    assert saved["difference"] > 0 and saved["samples"] == 200

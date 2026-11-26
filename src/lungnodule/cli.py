@@ -1,4 +1,4 @@
-"""Command-line interface: build-dataset, evaluate, score, breakdown and explain."""
+"""Command-line interface: build-dataset, evaluate, score, breakdown, compare and explain."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import csv
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from lungnodule import explain as explain_module
@@ -17,7 +18,7 @@ from lungnodule.dataset import build_dataset, load_input_config
 from lungnodule.evaluation import evaluate_split
 from lungnodule.explanations import explain_candidates
 from lungnodule.folds import check_patient_leaks, find_scans, load_patient_ids, split_by_subset
-from lungnodule.froc import FP_RATES, bootstrap_cpm, compute_froc
+from lungnodule.froc import FP_RATES, bootstrap_cpm, compare_cpm, compute_froc
 from lungnodule.preprocess import DEFAULT_STACK_MM, INPUT_MODES, InputConfig
 
 EXIT_OK = 0
@@ -124,6 +125,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=[0.125, 1.0, 8.0],
         help="False positives per scan at which to report (default: 0.125 1 8)",
     )
+
+    compare = commands.add_parser(
+        "compare", help="Paired bootstrap comparison of two candidates files on the same scans"
+    )
+    compare.add_argument("--baseline", type=Path, required=True, help="Candidates CSV of model A")
+    compare.add_argument("--candidates", type=Path, required=True, help="Candidates CSV of model B")
+    compare.add_argument("--annotations", type=Path, required=True, help="LUNA16 annotations.csv")
+    compare.add_argument("--excluded", type=Path, help="LUNA16 annotations_excluded.csv")
+    compare.add_argument(
+        "--scans",
+        type=Path,
+        required=True,
+        metavar="FILE",
+        help="Series UIDs both models were evaluated on, one per line",
+    )
+    compare.add_argument("--samples", type=_positive_int, default=1000, help="Bootstrap draws")
+    compare.add_argument("--out", type=Path, help="Write the comparison as JSON")
 
     explain = commands.add_parser(
         "explain", help="Eigen-CAM maps and box energy for the top candidates of an evaluation"
@@ -289,6 +307,36 @@ def _run_score(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _run_compare(args: argparse.Namespace) -> int:
+    scans = _read_scan_ids(args.scans)
+    annotations = load_annotations(args.annotations)
+    nodules = {uid: annotations.get(uid, []) for uid in scans}
+    excluded = load_annotations(args.excluded) if args.excluded is not None else {}
+    baseline, candidate = load_candidates(args.baseline), load_candidates(args.candidates)
+    result = compare_cpm(
+        baseline,
+        candidate,
+        nodules,
+        scan_ids=scans,
+        excluded_by_scan=excluded,
+        samples=args.samples,
+    )
+    a = compute_froc(baseline, nodules, scan_ids=scans, excluded_by_scan=excluded)
+    b = compute_froc(candidate, nodules, scan_ids=scans, excluded_by_scan=excluded)
+    print(f"Scans: {a.total_scans}, nodules: {a.total_nodules}")
+    print("  FP/scan   baseline  candidates")
+    for rate, sa, sb in zip(FP_RATES, a.sensitivities, b.sensitivities, strict=True):
+        print(f"  {rate:>7g}   {sa:>8.3f}  {sb:>10.3f}")
+    print(f"CPM: {result.cpm_baseline:.4f} -> {result.cpm_candidate:.4f}")
+    print(
+        f"Difference: {result.difference:+.4f} "
+        f"(paired 95% CI {result.lower:+.3f} to {result.upper:+.3f}; "
+        f"not better in {result.share_not_better:.1%} of {result.samples} draws)"
+    )
+    _write_json(args.out, asdict(result))
+    return EXIT_OK
+
+
 def _run_breakdown(args: argparse.Namespace) -> int:
     candidates, nodules, scans, excluded = _load_scored(args)
     breakdowns = sensitivity_by_size(
@@ -339,6 +387,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "evaluate": _run_evaluate,
         "score": _run_score,
         "breakdown": _run_breakdown,
+        "compare": _run_compare,
         "explain": _run_explain,
     }
     try:
