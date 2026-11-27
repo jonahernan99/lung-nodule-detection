@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-11-26
+
+### Added
+
+- `results/luna16-subset9-gray-control/`: a single-slice run with the same
+  early stopping as the 2.5D run. Training is deterministic (seed 0), and the
+  run produced candidates byte-identical to the first single-slice run, so
+  early stopping does not explain the 2.5D gain. Its Eigen-CAM report shows no
+  separation either (AUC 0.50).
+
 ## [0.9.0] - 2026-11-26
 
 ### Added
@@ -166,6 +176,7 @@ All notable changes to this project are documented here. The format is based on
 - Readers for LUNA16 annotation and candidate CSV files.
 - World-to-voxel coordinate conversion, including flipped axes.
 
+[0.9.1]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jonahernan99/lung-nodule-detection/compare/v0.6.0...v0.7.0
