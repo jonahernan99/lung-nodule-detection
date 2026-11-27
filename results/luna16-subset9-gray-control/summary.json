@@ -1,0 +1,57 @@
+{
+  "description": "Control run: single-slice (gray) input with the same early stopping as the 2.5D run (lungnodule 0.8.0 notebook, QUICK_RUN = False)",
+  "date": "2026-11-26",
+  "purpose": "Check whether early stopping, rather than the 2.5D input, explains the 2.5D run's higher CPM.",
+  "input": {
+    "mode": "gray",
+    "stack_mm": 2.0,
+    "window": [
+      -600.0,
+      1500.0
+    ]
+  },
+  "model": {
+    "weights": "yolov5su.pt",
+    "image_size": 512,
+    "epochs": 100,
+    "patience": 20,
+    "epochs_run": 56,
+    "best_epoch": 32,
+    "batch": 16,
+    "seed": 0,
+    "deterministic": true
+  },
+  "result": {
+    "candidates_md5": "71a77b9cce8b42c48ba518517fc2a822",
+    "identical_to": "results/luna16-subset9/candidates.csv (the first run, 100 epochs without early stopping)",
+    "cpm": 0.7469387755102039,
+    "cpm_interval": {
+      "lower": 0.689864864864865,
+      "upper": 0.800717285768832,
+      "confidence": 0.95,
+      "samples": 1000
+    },
+    "conclusion": "Training is deterministic and the first run's best checkpoint was also epoch 32, so early stopping evaluated the same model: byte-identical candidates and the same CPM. The 2.5D run's gain over single slices is therefore due to the input, for this seed."
+  },
+  "eigencam": {
+    "energy_auc": 0.5004900759617741,
+    "by_label": {
+      "excluded": {
+        "count": 70,
+        "median_energy": 0.00011162213123927762
+      },
+      "false positive": {
+        "count": 53,
+        "median_energy": 0.000744696538117012
+      },
+      "nodule": {
+        "count": 77,
+        "median_energy": 0.0008556256122582411
+      }
+    }
+  },
+  "files": {
+    "training_curves.png": "Ultralytics training and validation curves (56 epochs, early stopping)",
+    "eigencam.csv, eigencam.json, eigencam.png": "Eigen-CAM box energy of the top 200 candidates of this run"
+  }
+}
