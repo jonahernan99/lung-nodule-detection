@@ -11,8 +11,8 @@ in CT scans, rebuilt with a stricter, scan-level evaluation.**
 > that stacks neighbouring slices, the detector reaches a **CPM of 0.861**
 > (95% CI 0.802–0.920) on 88 held-out LUNA16 scans with false positives counted
 > per scan, up from 0.747 with single slices (paired difference +0.114, 95% CI
-> +0.060 to +0.176). See [Results](#results). Next: a single-slice run with the
-> same early stopping as a clean control.
+> +0.060 to +0.176). A control run rules out early stopping as the cause. See
+> [Results](#results). Next: more training seeds and all ten LUNA16 folds.
 
 ## Background
 
@@ -63,13 +63,17 @@ checkpoint.
 - The gain is largest where few false positives are allowed: at 1/8 per scan,
   sensitivity goes from 0.486 to 0.714. Both runs find 101 of the 105 nodules at
   some confidence; the 2.5D run ranks them above its false positives more often.
-- **Caveats.** Each input was trained once. The 2.5D run also stopped early
-  (epoch 81, best epoch 61) where the first run trained 100 epochs; early
-  stopping can only shorten training and both runs evaluate their best
-  validation checkpoint, so it is an unlikely source of the gain, but a
-  single-slice run with the same settings is the clean control. The 2.5D input
-  was chosen from the size analysis below before the second run, not by
-  comparing several models on the test set.
+- **Control run.** The 2.5D run also used early stopping (it stopped at epoch
+  81, best epoch 61), where the first run trained 100 epochs. A third run with
+  single slices and the same early stopping stopped at epoch 56 and produced
+  candidates byte-identical to the first run's: training is deterministic with
+  seed 0, and the first run's best checkpoint was also epoch 32
+  ([`summary.json`](results/luna16-subset9-gray-control/summary.json)). Early
+  stopping therefore changed nothing, and the gain comes from the input.
+- **Remaining caveats.** Each input was trained with one seed, so the spread
+  between training runs is not measured, and all runs are tested on one fold.
+  The 2.5D input was chosen from the size analysis below before the second run,
+  not by comparing several models on the test set.
 - **Checked independently:** both runs' candidates were re-scored offline with
   `compute_froc` and with the port of the official LUNA16 algorithm, giving the
   same seven sensitivities as Kaggle. Numbers, settings and candidates are in
@@ -156,9 +160,9 @@ context without any change to its architecture.
 
 **Result:** CPM 0.861 against 0.747 with single slices on the same 88 test
 scans, a paired difference of +0.114 (95% CI +0.060 to +0.176), with the
-largest gains on small nodules and at low false-positive rates (see
-[Results](#results)). A single-slice run with the same early stopping is the
-remaining control.
+largest gains on small nodules and at low false-positive rates. A single-slice
+control run with the same early stopping reproduced the single-slice result
+exactly, so the gain is due to the input (see [Results](#results)).
 
 ### Eigen-CAM explanations
 
@@ -193,7 +197,9 @@ Ultralytics adapter checks that its hook captures every new image.
 among the top 200 candidates, 85 are nodules, 29 false positives and 86 lie on
 excluded findings. The map is exactly zero inside 50 of the 85 nodule boxes,
 even for detections with confidence near 0.9, and box energy does not separate
-nodules from false positives (AUC 0.42). The example maps show why: the first
+nodules from false positives (AUC 0.42). The single-slice control run gives the
+same picture (AUC 0.50,
+[`summary.json`](results/luna16-subset9-gray-control/summary.json)). The example maps show why: the first
 principal component of this layer follows large structures such as the body
 outline and lung borders, not the detected objects. In this setup, Eigen-CAM
 cannot filter candidates. That is a result about this configuration (first
@@ -367,7 +373,8 @@ export_slices(scan, nodules.get("<series_uid>", []), "<series_uid>", "dataset/tr
 - [ ] Per-candidate Eigen-CAM on crops around each detection
 - [x] 2.5D input option: neighbouring slices as color channels
 - [x] Kaggle run with the 2.5D input, compared with the single-slice run
-- [ ] Single-slice control run with the same early stopping
+- [x] Single-slice control run with the same early stopping (identical to the first run)
+- [ ] More training seeds for both inputs
 - [ ] All ten LUNA16 folds, to report a cross-validated CPM
 
 ## Data
